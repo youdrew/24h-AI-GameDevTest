@@ -12,7 +12,14 @@
 //     fallingQueue: [ patternId, ... ]                     // appended for level >= 51
 //   }
 
-import { CONFIG } from './config.js';
+import { CONFIG, THEMES, THEME_PERIOD } from './config.js';
+
+// Theme rotates every THEME_PERIOD levels (default 3). N=1..3 → THEMES[0],
+// N=4..6 → THEMES[1], and so on, cycling through the 6 themes indefinitely.
+export function themeForLevel(N) {
+  const idx = Math.floor(Math.max(0, N - 1) / THEME_PERIOD) % THEMES.length;
+  return THEMES[idx];
+}
 
 // ---- Difficulty formula v3 ------------------------------------------------
 //
@@ -36,15 +43,21 @@ import { CONFIG } from './config.js';
 const PT_PERIOD = 4;       // +1 patternType every N levels
 const PT_BASE = 3;         // pt at N=1
 const PT_CAP = 28;         // leave 4 slots before PATTERN_LIBRARY (32) is exhausted
-const SPT_CAP = 9;         // 28 × 9 × 3 = 756 ≤ 8 × 100 = 800 capacity
+const SPT_CAP = 6;         // 28 × 6 × 3 = 504 ≤ 8 × 64 = 512 capacity
 const LAYER_PERIOD = 6;    // +1 layer every N levels (after the base 2)
 const LAYER_BASE = 2;      // every level has at least 2 layers (overlap floor)
-const LAYER_CAP = 8;       // visual stacking limit (was 6)
-export const BOARD_MAX = 10; // hard cap on cols and rows
-const LAYER_CELL_CAP = BOARD_MAX * BOARD_MAX; // = 100; per-layer tile ceiling
+const LAYER_CAP = 8;       // visual stacking limit
+export const BOARD_MAX = 8;   // hard cap on cols and rows
+const LAYER_CELL_CAP = BOARD_MAX * BOARD_MAX; // = 64; per-layer tile ceiling
 
 export function levelParams(N) {
-  const patternTypes = Math.min(PT_CAP, PT_BASE + Math.floor((N - 1) / PT_PERIOD));
+  // N=1 keeps pt=3 as a tutorial freebie (3 patterns + 7 slots → triple is
+  // unavoidable, you literally can't lose). From N=2 onward, floor pt at 4
+  // so the slot can actually fill without a triple, i.e. failure is possible.
+  const formula = PT_BASE + Math.floor((N - 1) / PT_PERIOD);
+  const patternTypes = N === 1
+    ? Math.min(PT_CAP, PT_BASE)
+    : Math.min(PT_CAP, Math.max(4, formula));
   const setsPerType = Math.min(SPT_CAP, Math.max(1, N - patternTypes + 3));
   const tileCount = patternTypes * setsPerType * 3;
   // Layers: at least the formula amount, but bumped up if we need more depth

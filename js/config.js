@@ -70,3 +70,90 @@ export const POWERUPS = {
 };
 
 export const POWERUP_ORDER = ['shuffle', 'undo', 'hint', 'bomb', 'trashOut', 'freeze'];
+
+// ----- Themes ---------------------------------------------------------------
+//
+// Each theme provides ① a 32-emoji tile library (first 28 are used at the
+// PT_CAP=28 cap, last 4 are spares), ② a background image, and ③ a BGM track.
+// themeForLevel(N) (in level.js) rotates through THEMES every 3 levels.
+//
+// Asset paths preserve the original filenames (Chinese characters & spaces
+// included). Code that hands them to fetch / Audio / PIXI MUST URI-encode
+// each segment; see encodeAssetPath() helpers.
+export const THEMES = [
+  {
+    id: 'orchard', name: '缤纷果园',
+    library: [
+      '🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓',
+      '🫐','🍒','🍑','🥭','🍍','🥥','🥝','🍈',
+      '🍏','🥑','🍅','🌽','🥕','🍆','🌶','🫒',
+      '🍞','🥐','🧀','🍯','🍪','🍰','🥧','🍩'
+    ],
+    bgImage: 'assets/pic/Orchard.png',
+    bgm: 'assets/music/Themes/Orchard/秋日果园漫步_no-watermark.mp3'
+  },
+  {
+    id: 'zoo', name: '奇趣动物园',
+    library: [
+      '🐱','🐶','🐰','🐻','🦊','🐼','🐯','🦁',
+      '🐨','🐮','🐷','🐸','🦄','🦒','🐘','🦓',
+      '🦏','🦛','🐊','🐢','🐍','🦔','🐹','🐭',
+      '🐺','🦝','🐗','🦌','🐧','🦉','🦅','🦩'
+    ],
+    bgImage: 'assets/pic/Zoo.png',
+    bgm: 'assets/music/Themes/Zoo/小动物们的捉迷藏_no-watermark.mp3'
+  },
+  {
+    id: 'spring', name: '春日庭院',
+    library: [
+      '🌸','🌷','🌹','🌺','🌻','🌼','💐','🌱',
+      '🍀','🍃','🌿','🌳','🌲','🌴','🌵','🍂',
+      '🌾','🦋','🐝','🐞','🐛','🐌','🕊️','☀️',
+      '🌤️','🌈','🌙','⭐','❄️','☔','⛅','💧'
+    ],
+    bgImage: 'assets/pic/Spring Garden.png',
+    bgm: 'assets/music/Themes/Spring Garden/春庭樱梦_no-watermark.mp3'
+  },
+  {
+    id: 'starbound', name: '星际探险',
+    library: [
+      '🚀','🛸','🛰️','🌍','🌎','🌏','🌑','🌒',
+      '🌓','🌔','🌕','🌖','🌗','🌘','⭐','🌟',
+      '✨','💫','🌠','☄️','🪐','🌌','👽','🤖',
+      '🧭','🪂','🔭','🔋','🛟','🌡️','🪞','🔦'
+    ],
+    bgImage: 'assets/pic/Starbound.png',
+    bgm: 'assets/music/Themes/Starbound/星云漫游_no-watermark.mp3'
+  },
+  {
+    id: 'bistro', name: '环球美食',
+    library: [
+      '🍣','🍱','🍙','🍚','🍜','🍝','🍤','🥟',
+      '🍕','🍔','🌭','🌮','🌯','🥙','🥪','🍟',
+      '🥗','🍳','🥘','🍲','🥣','🍦','🍰','🧁',
+      '🍪','🍩','🍫','🍮','☕','🍵','🥤','🍷'
+    ],
+    bgImage: 'assets/pic/Bistro.jpeg',
+    bgm: 'assets/music/Themes/Bistro/巴黎街角的雨天_no-watermark.mp3'
+  },
+  {
+    id: 'retro', name: '像素冒险',
+    library: [
+      '🎮','🕹️','🎯','🎲','🃏','🧩','🎰','🎳',
+      '👾','💎','🪙','💰','🗝️','🛡️','⚔️','🏹',
+      '🪄','📜','🗡️','💣','🔮','🪬','⚜️','🧿',
+      '🏰','🏯','⛩️','🗿','🎁','🎵','🪅','🎊'
+    ],
+    bgImage: 'assets/pic/Retro Quest.jpeg',
+    bgm: 'assets/music/Themes/Retro Quest/像素宝藏_no-watermark.mp3'
+  }
+];
+
+// Rotates themes every THEME_PERIOD levels. THEMES[i % THEMES.length].
+export const THEME_PERIOD = 3;
+
+// URI-encode each path segment so non-ASCII filenames (Chinese / spaces) are
+// usable with fetch / Audio / PIXI Assets.
+export function encodeAssetPath(p) {
+  return String(p).split('/').map(encodeURIComponent).join('/');
+}

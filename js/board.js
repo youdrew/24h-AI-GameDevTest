@@ -1,6 +1,6 @@
 // Tile Explorer — board container, tile sprites, coverage, layout & responsive scaling
 
-import { CONFIG, PATTERN_LIBRARY, TILE_BG_COLORS } from './config.js';
+import { CONFIG, PATTERN_LIBRARY, TILE_BG_COLORS, THEMES } from './config.js';
 import { computeCoverage } from './level.js';
 import { anim } from './animation.js';
 
@@ -29,6 +29,16 @@ export class Board {
     this.frozenTiles = new Map();        // id -> remaining drops
     this.dropsThisLevel = 0;
     this._nextDropId = 1000000;          // monotonic id source for falling-queue tiles
+    this.theme = THEMES[0];              // overridden per-level via setTheme()
+  }
+
+  setTheme(theme) {
+    this.theme = theme || THEMES[0];
+  }
+
+  _emojiFor(patternId) {
+    const lib = (this.theme && this.theme.library) || PATTERN_LIBRARY;
+    return lib[patternId % lib.length];
   }
 
   destroy() {
@@ -77,7 +87,7 @@ export class Board {
     sprite.addChild(bg);
     sprite.bg = bg;
 
-    const emoji = PATTERN_LIBRARY[t.patternId % PATTERN_LIBRARY.length];
+    const emoji = this._emojiFor(t.patternId);
     const text = new PIXI.Text(emoji, {
       fontSize: 30,
       align: 'center'
@@ -241,7 +251,7 @@ export class Board {
       sprite.bg.lineStyle(2, 0x1a1f2e, 0.4);
       sprite.bg.drawRoundedRect(-CONFIG.TILE_SIZE / 2, -CONFIG.TILE_SIZE / 2, CONFIG.TILE_SIZE, CONFIG.TILE_SIZE, 8);
       sprite.bg.endFill();
-      sprite.label.text = PATTERN_LIBRARY[newPattern % PATTERN_LIBRARY.length];
+      sprite.label.text = this._emojiFor(newPattern);
     }
   }
 

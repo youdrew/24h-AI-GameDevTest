@@ -30,6 +30,7 @@ async function boot() {
   // Particle layer used by anim.burst — must be on top
   const particleLayer = new PIXI.Container();
 
+  stage.addChild(game.bgLayer);
   stage.addChild(game.boardLayer);
   stage.addChild(game.slotLayer);
   stage.addChild(game.powerupLayer);

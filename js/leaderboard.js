@@ -18,6 +18,43 @@ function headers() {
   };
 }
 
+// Strip any character the Supabase upsert_record regex rejects.
+// SQL allows: a-z A-Z 0-9 _ - 一-鿿 SPACE.  '#' and other punctuation are out;
+// existing localStorage may still hold "Player#XXXX" from the old default name.
+function sanitizeName(name) {
+  if (typeof name !== 'string') return 'Player';
+  const cleaned = name
+    .replace(/[^a-zA-Z0-9_\- 一-鿿]/g, '_')
+    .replace(/^_+|_+$/g, '')   // tidy edges
+    .slice(0, 12);
+  return cleaned || 'Player';
+}
+
+async function callRpc(record) {
+  const url = `${CONFIG.SUPABASE_URL}/rest/v1/rpc/upsert_record`;
+  const safeName = sanitizeName(record.display_name);
+  const body = {
+    p_device_id: record.device_id,
+    p_display_name: safeName,
+    p_level: record.level,
+    p_stars: record.stars,
+    p_steps: record.steps
+  };
+  const res = await fetch(url, { method: 'POST', headers: headers(), body: JSON.stringify(body) });
+  if (!res.ok) {
+    let detail = '';
+    try { detail = await res.text(); } catch {}
+    const err = new Error(`HTTP ${res.status} — ${detail || res.statusText}`);
+    err.status = res.status;
+    err.detail = detail;
+    err.body = body;
+    throw err;
+  }
+  // upsert_record RETURNS VOID → empty body. Resolve to {} so the caller can
+  // still treat the submission as successful.
+  return res.json().catch(() => ({}));
+}
+
 export const leaderboard = {
   async submit({ level, stars, steps }) {
     const record = {
@@ -27,31 +64,21 @@ export const leaderboard = {
       ts: Date.now()
     };
     if (!isConfigured()) {
-      // No backend configured: keep a local-only "best" so UI can still show progress
       return null;
     }
-    if (!isValidName(record.display_name)) {
-      console.warn('[leaderboard] invalid name; skipping submit');
+    // Loose JS-side validation only — sanitizeName handles the rest at submit
+    // time so legacy '#' names don't get rejected forever.
+    if (!isValidName(record.display_name) && !sanitizeName(record.display_name)) {
+      console.warn('[leaderboard] invalid name; skipping submit', record.display_name);
       return null;
     }
     try {
-      const res = await fetch(`${CONFIG.SUPABASE_URL}/rest/v1/rpc/upsert_record`, {
-        method: 'POST',
-        headers: headers(),
-        body: JSON.stringify({
-          p_device_id: record.device_id,
-          p_display_name: record.display_name,
-          p_level: record.level,
-          p_stars: record.stars,
-          p_steps: record.steps
-        })
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      // Fire-and-forget — also try to flush any queued
+      const result = await callRpc(record);
+      // Fire-and-forget — push any queued submissions too now that we're online.
       this.flushQueue().catch(() => {});
-      return await res.json().catch(() => ({}));
+      return result;
     } catch (err) {
-      console.warn('[leaderboard] submit failed, queueing', err);
+      console.warn('[leaderboard] submit failed, queueing', err.message, err.detail || '', err.body || '');
       storage.enqueueSubmission(record);
       return null;
     }
@@ -64,20 +91,9 @@ export const leaderboard = {
     if (pending.length === 0) return;
     for (const r of pending) {
       try {
-        const res = await fetch(`${CONFIG.SUPABASE_URL}/rest/v1/rpc/upsert_record`, {
-          method: 'POST',
-          headers: headers(),
-          body: JSON.stringify({
-            p_device_id: r.device_id,
-            p_display_name: r.display_name,
-            p_level: r.level,
-            p_stars: r.stars,
-            p_steps: r.steps
-          })
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        await callRpc(r);
       } catch (err) {
-        // Re-queue on failure
+        console.warn('[leaderboard] flush re-queueing', err.message, err.detail || '');
         storage.enqueueSubmission(r);
       }
     }

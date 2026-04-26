@@ -1,7 +1,7 @@
 // Tile Explorer — Web Audio synthesis + BGM + ducking
 // Synthesizes all SFX procedurally; loads BGM/win/fail from sound/ as decoded buffers.
 
-import { CONFIG } from './config.js';
+import { CONFIG, encodeAssetPath } from './config.js';
 import { storage } from './storage.js';
 
 const FILE_SOURCES = {
@@ -23,6 +23,8 @@ class AudioEngine {
     this.unlocked = false;
     this.duckTimer = null;
     this.pendingBgmStart = false;
+    this.currentBgmUrl = null;     // raw (un-encoded) URL of current theme BGM
+    this.bgmCache = new Map();     // url → AudioBuffer
   }
 
   // Browsers require a user gesture before resuming AudioContext
@@ -117,23 +119,51 @@ class AudioEngine {
 
   // ---- BGM ------------------------------------------------------------------
 
+  // Switch the BGM track to the given theme. Loads the file once (cached),
+  // stops the current track, and starts the new one (if music is enabled and
+  // audio is unlocked). Safe to call before unlock — we'll resume on unlock.
+  async setTheme(theme) {
+    if (!theme || !theme.bgm) return;
+    if (this.currentBgmUrl === theme.bgm && this.bgmSource) return;
+    this.currentBgmUrl = theme.bgm;
+    if (!this.unlocked) {
+      this.pendingBgmStart = true;
+      return;
+    }
+    if (!storage.state.settings.musicEnabled) {
+      // Stash for later; toggling music on will pick this up.
+      return;
+    }
+    await this._playBgmUrl(theme.bgm);
+  }
+
   async startBgm() {
     if (!this.unlocked) {
       this.pendingBgmStart = true;
       return;
     }
-    if (this.bgmSource) return;
     if (!storage.state.settings.musicEnabled) return;
-    // Load on demand (in case preload hasn't finished)
-    let buf = this.buffers.bgm;
+    if (!this.currentBgmUrl) return;          // no theme set yet
+    if (this.bgmSource) return;               // already playing
+    await this._playBgmUrl(this.currentBgmUrl);
+  }
+
+  async _playBgmUrl(url) {
+    let buf = this.bgmCache.get(url);
     if (!buf) {
-      buf = await this._loadBuffer('bgm', 'assets/sounds/bgm.ogg');
-      if (!buf) buf = await this._loadBuffer('bgm', 'assets/sounds/bgm.m4a');
+      try {
+        const res = await fetch(encodeAssetPath(url));
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const arr = await res.arrayBuffer();
+        buf = await this.ctx.decodeAudioData(arr);
+        this.bgmCache.set(url, buf);
+      } catch (err) {
+        console.warn('[audio] bgm load failed', url, err);
+        return;
+      }
     }
-    if (!buf) {
-      // No BGM file available — silently no-op (project owner provides later)
-      return;
-    }
+    // Replace current source
+    this.stopBgm();
     const src = this.ctx.createBufferSource();
     src.buffer = buf;
     src.loop = true;

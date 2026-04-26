@@ -1,11 +1,11 @@
 // Tile Explorer — game state machine + glue between board/slot/audio/UI
 
-import { CONFIG, POWERUPS, POWERUP_ORDER } from './config.js';
+import { CONFIG, POWERUPS, POWERUP_ORDER, THEMES, encodeAssetPath } from './config.js';
 import { storage } from './storage.js';
 import { audio } from './audio.js';
 import { Board } from './board.js';
 import { Slot } from './slot.js';
-import { generateLayout } from './level.js';
+import { generateLayout, themeForLevel, BOARD_MAX } from './level.js';
 import { anim } from './animation.js';
 
 const STATES = { MENU: 'menu', PLAYING: 'playing', PAUSED: 'paused', COMPLETE: 'complete', GAMEOVER: 'gameover' };
@@ -16,11 +16,14 @@ export class Game {
     this.state = STATES.MENU;
 
     // Containers — added by main.js, but built here
+    this.bgLayer = new PIXI.Container();      // theme background image (lowest)
     this.statusBar = new PIXI.Container();
     this.boardLayer = new PIXI.Container();
     this.slotLayer = new PIXI.Container();
     this.powerupLayer = new PIXI.Container();
     this.effectLayer = new PIXI.Container();
+    this.bgSprite = null;
+    this.currentTheme = THEMES[0];
 
     this.board = new Board(app);
     this.boardLayer.addChild(this.board.container);
@@ -209,6 +212,7 @@ export class Game {
     this.slot.resize();
     this._layoutPowerups();
     this._refreshStatusBar();
+    this._fitBackground();
   }
 
   // ---- Public lifecycle -----------------------------------------------------
@@ -226,10 +230,26 @@ export class Game {
     this.matchClearsThisRound = 0;
     this.activePowerupMode = null;
 
-    // Use cached layout if available
+    // Resolve theme first so board/slot render with the right emoji set even
+    // when the layout came from cache (cached layout doesn't carry a theme).
+    const theme = themeForLevel(N);
+    if (this.currentTheme !== theme) {
+      this.currentTheme = theme;
+      audio.setTheme(theme).catch(() => {});
+      this._setBackground(theme).catch(() => {});
+    }
+    this.board.setTheme(theme);
+    this.slot.setTheme(theme);
+
+    // Use cached layout if available — but discard it if the saved layout was
+    // generated under an older, larger BOARD_MAX (otherwise the board would
+    // overflow the new cap).
     let layout = null;
     const cached = storage.getCachedLevel(N);
-    if (cached && cached.layout) {
+    const cacheUsable = cached && cached.layout && cached.layout.boardSize
+      && cached.layout.boardSize.cols <= BOARD_MAX
+      && cached.layout.boardSize.rows <= BOARD_MAX;
+    if (cacheUsable) {
       layout = cached.layout;
       this.optimalSteps = cached.optimalSteps;
     } else {
@@ -244,6 +264,43 @@ export class Game {
     this._refreshPowerupCounts();
     this._refreshStatusBar();
     this._maybeShowTutorial();
+  }
+
+  // Load + place the theme's background image. Cover-style fit, dimmed so it
+  // doesn't compete with tiles. Failure is non-fatal (warning + skip).
+  async _setBackground(theme) {
+    if (!theme || !theme.bgImage) return;
+    const url = encodeAssetPath(theme.bgImage);
+    let tex;
+    try {
+      tex = await PIXI.Assets.load(url);
+    } catch (err) {
+      console.warn('[game] background load failed', url, err);
+      return;
+    }
+    if (this.bgSprite) {
+      this.bgLayer.removeChild(this.bgSprite);
+      this.bgSprite.destroy();
+      this.bgSprite = null;
+    }
+    const sprite = new PIXI.Sprite(tex);
+    sprite.alpha = 0.55;  // soft so tiles stay legible
+    this.bgSprite = sprite;
+    this.bgLayer.addChild(sprite);
+    this._fitBackground();
+  }
+
+  _fitBackground() {
+    if (!this.bgSprite) return;
+    const screen = this.app.renderer.screen;
+    const tex = this.bgSprite.texture;
+    if (!tex || !tex.width || !tex.height) return;
+    const sx = screen.width / tex.width;
+    const sy = screen.height / tex.height;
+    const s = Math.max(sx, sy);     // CSS background-size: cover
+    this.bgSprite.scale.set(s);
+    this.bgSprite.x = (screen.width - tex.width * s) / 2;
+    this.bgSprite.y = (screen.height - tex.height * s) / 2;
   }
 
   pause() {

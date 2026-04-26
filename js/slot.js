@@ -1,6 +1,6 @@
 // Tile Explorer — bottom collection slot (7 cells)
 
-import { CONFIG, PATTERN_LIBRARY, TILE_BG_COLORS } from './config.js';
+import { CONFIG, PATTERN_LIBRARY, TILE_BG_COLORS, THEMES } from './config.js';
 import { findMatch } from './matcher.js';
 import { anim } from './animation.js';
 
@@ -19,9 +19,19 @@ export class Slot {
     this.cells = [];          // { container, sprite (tile clone), patternId, sourceTileId }
     this.warning = false;
     this.cellSize = 0;
+    this.theme = THEMES[0];
 
     this._buildCells();
     this.resize();
+  }
+
+  setTheme(theme) {
+    this.theme = theme || THEMES[0];
+  }
+
+  _emojiFor(patternId) {
+    const lib = (this.theme && this.theme.library) || PATTERN_LIBRARY;
+    return lib[patternId % lib.length];
   }
 
   _buildCells() {
@@ -180,7 +190,7 @@ export class Slot {
     bg.drawRoundedRect(-CONFIG.TILE_SIZE / 2, -CONFIG.TILE_SIZE / 2, CONFIG.TILE_SIZE, CONFIG.TILE_SIZE, 8);
     bg.endFill();
     sprite.addChild(bg);
-    const text = new PIXI.Text(PATTERN_LIBRARY[patternId % PATTERN_LIBRARY.length], { fontSize: 30 });
+    const text = new PIXI.Text(this._emojiFor(patternId), { fontSize: 30 });
     text.anchor.set(0.5);
     sprite.addChild(text);
     return sprite;

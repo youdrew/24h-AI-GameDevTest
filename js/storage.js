@@ -42,8 +42,11 @@ function generateUUID() {
 }
 
 function defaultPlayerName() {
+  // Avoid '#': the Supabase upsert_record RPC's regex
+  // ^[a-zA-Z0-9_\-一-鿿 ]{1,12}$ rejects it, which silently broke leaderboard
+  // submits for all auto-generated names.
   const hex = Math.floor(Math.random() * 0xffff).toString(16).toUpperCase().padStart(4, '0');
-  return `Player#${hex}`;
+  return `Player_${hex}`;
 }
 
 function migrate(data) {
