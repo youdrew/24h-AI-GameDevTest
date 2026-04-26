@@ -1,10 +1,8 @@
 // Tile Explorer — board container, tile sprites, coverage, layout & responsive scaling
 
-import { CONFIG, PATTERN_LIBRARY } from './config.js';
+import { CONFIG, PATTERN_LIBRARY, TILE_BG_COLORS } from './config.js';
 import { computeCoverage } from './level.js';
 import { anim } from './animation.js';
-
-const TILE_BG_COLORS = [0xfde68a, 0xfca5a5, 0xa7f3d0, 0xbfdbfe, 0xddd6fe, 0xfbcfe8, 0xc7d2fe, 0xfed7aa];
 
 export class Board {
   constructor(app) {

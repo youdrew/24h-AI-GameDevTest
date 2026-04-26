@@ -212,7 +212,8 @@ export class Game {
     this.statusText.text = `第 ${this.level} 关`;
     const stars = storage.getStars(this.level);
     this.starsText.text = '★'.repeat(stars) + '☆'.repeat(3 - stars);
-    this.starsText.x = screen.width - 16;
+    // Leave room on the far right for the DOM pause button (40px wide @ right:12px).
+    this.starsText.x = screen.width - 64;
     this._renderComboMeter();
   }
 

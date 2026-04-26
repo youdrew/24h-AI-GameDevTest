@@ -51,6 +51,14 @@ export const PATTERN_LIBRARY = [
   '🎈', '🎯', '🎁', '🔔', '💎', '🎵', '🔑', '🧩'
 ];
 
+// Per-pattern tile background palette. Indexed by patternId (mod length) so a
+// pattern keeps the same color on the board AND in the slot — players use the
+// border/fill color as their primary visual cue.
+export const TILE_BG_COLORS = [
+  0xfde68a, 0xfca5a5, 0xa7f3d0, 0xbfdbfe,
+  0xddd6fe, 0xfbcfe8, 0xc7d2fe, 0xfed7aa
+];
+
 // Powerup definitions
 export const POWERUPS = {
   shuffle: { id: 'shuffle', icon: '🔄', label: '洗牌', unlock: 1,  cap: 9, breaks3Star: true },

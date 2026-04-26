@@ -1,6 +1,6 @@
 // Tile Explorer — bottom collection slot (7 cells)
 
-import { CONFIG, PATTERN_LIBRARY } from './config.js';
+import { CONFIG, PATTERN_LIBRARY, TILE_BG_COLORS } from './config.js';
 import { findMatch } from './matcher.js';
 import { anim } from './animation.js';
 
@@ -174,7 +174,8 @@ export class Slot {
   _makeMiniTile(patternId) {
     const sprite = new PIXI.Container();
     const bg = new PIXI.Graphics();
-    bg.beginFill(0xfde68a);
+    const color = TILE_BG_COLORS[patternId % TILE_BG_COLORS.length];
+    bg.beginFill(color);
     bg.lineStyle(2, 0x1a1f2e, 0.4);
     bg.drawRoundedRect(-CONFIG.TILE_SIZE / 2, -CONFIG.TILE_SIZE / 2, CONFIG.TILE_SIZE, CONFIG.TILE_SIZE, 8);
     bg.endFill();

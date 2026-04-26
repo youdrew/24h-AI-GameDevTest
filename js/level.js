@@ -19,27 +19,39 @@ import { CONFIG } from './config.js';
 // Design:
 //   patternTypes(N) — monotonic, +1 every 4 levels, capped at 28
 //   setsPerType(N)  — closed form spt = N - pt + 3, ensures tileCount strictly
-//                     grows by exactly 3 per level.
-//   layers(N)       — **min 2 (every level has overlap)**, +1 every 15 levels,
-//                     capped at 6.
-//   tileCount(N)    — patternTypes × setsPerType × 3   (math-consistent)
+//                     grows by exactly 3 per level (until SPT_CAP).
+//   layers(N)       — **min 2 (every level has overlap)**, +1 every 6 levels,
+//                     capped at 8.
+//   tileCount(N)    — patternTypes × setsPerType × 3 (math-consistent)
 //
-// 2026-04-27: layers floor raised from 1 → 2. The game's core mechanic is
-// stacked tiles covering each other; a single-layer level has no overlap and
-// degenerates into "click any 3 matching tiles" with a sprawling grid.
+// 2026-04-27: layers floor raised from 1 → 2. Stacked tiles are the core
+// mechanic; single-layer levels degenerate into "click any 3 matching tiles".
+//
+// 2026-04-27 (v3 cap pass): per user spec, board width/height is capped at
+// BOARD_MAX cells. Once layer 0 is full (= BOARD_MAX² tiles), further
+// difficulty comes from depth — layers grow faster (period 15 → 6) and to a
+// higher cap (6 → 8). setsPerType is capped so the total always fits inside
+// LAYER_CAP × BOARD_MAX² (= 800) cells with headroom.
 
 const PT_PERIOD = 4;       // +1 patternType every N levels
 const PT_BASE = 3;         // pt at N=1
 const PT_CAP = 28;         // leave 4 slots before PATTERN_LIBRARY (32) is exhausted
-const LAYER_PERIOD = 15;   // +1 layer every N levels (after the base 2)
+const SPT_CAP = 9;         // 28 × 9 × 3 = 756 ≤ 8 × 100 = 800 capacity
+const LAYER_PERIOD = 6;    // +1 layer every N levels (after the base 2)
 const LAYER_BASE = 2;      // every level has at least 2 layers (overlap floor)
-const LAYER_CAP = 6;       // visual stacking limit
+const LAYER_CAP = 8;       // visual stacking limit (was 6)
+export const BOARD_MAX = 10; // hard cap on cols and rows
+const LAYER_CELL_CAP = BOARD_MAX * BOARD_MAX; // = 100; per-layer tile ceiling
 
 export function levelParams(N) {
   const patternTypes = Math.min(PT_CAP, PT_BASE + Math.floor((N - 1) / PT_PERIOD));
-  const setsPerType = Math.max(1, N - patternTypes + 3);
-  const layers = Math.min(LAYER_CAP, LAYER_BASE + Math.floor((N - 1) / LAYER_PERIOD));
+  const setsPerType = Math.min(SPT_CAP, Math.max(1, N - patternTypes + 3));
   const tileCount = patternTypes * setsPerType * 3;
+  // Layers: at least the formula amount, but bumped up if we need more depth
+  // to fit `tileCount` under the per-layer cap.
+  const formulaLayers = Math.min(LAYER_CAP, LAYER_BASE + Math.floor((N - 1) / LAYER_PERIOD));
+  const fitLayers = Math.min(LAYER_CAP, Math.max(LAYER_BASE, Math.ceil(tileCount / LAYER_CELL_CAP)));
+  const layers = Math.max(formulaLayers, fitLayers);
   return { patternTypes, setsPerType, layers, tileCount };
 }
 
@@ -65,33 +77,62 @@ function shuffleInPlace(arr, rand) {
 
 // Distribute total tiles across layers in a pyramid pattern (lower layers
 // hold more, top has fewest). Returns counts[L] for L = 0..layers-1.
-// Each layer gets at least 1 tile (tile count is always ≥ 9 in this game,
-// and layers ≤ 6, so the pyramid weights always saturate).
+//
+// Constraints:
+//   - counts[L] <= LAYER_CELL_CAP (board cells available — 10×10 = 100)
+//   - counts[L] <= counts[L-1]    (upper layer is a subset of lower)
+//
+// When the natural pyramid would exceed the cap on lower layers, the overflow
+// flows *up* into upper layers; this can flatten the bottom of the pyramid
+// (e.g. [100,100,100,100,29] for 429 tiles in 5 layers) but always keeps the
+// non-increasing invariant so the geometry holds.
 function distributeTiles(total, layers) {
-  let totalWeight = 0;
+  const cap = LAYER_CELL_CAP;
+  // Initial pyramid allocation, immediately clamped per constraints.
   const weights = [];
+  let totalW = 0;
   for (let L = 0; L < layers; L++) {
-    const w = layers - L;       // bottom (L=0) heaviest, top (L=layers-1) lightest
+    const w = layers - L;
     weights.push(w);
-    totalWeight += w;
+    totalW += w;
   }
-  const counts = weights.map((w) => Math.max(1, Math.floor(total * w / totalWeight)));
-  // Ensure ∑counts == total: adjust by dispensing leftover to the lowest layer first.
-  let diff = total - counts.reduce((a, b) => a + b, 0);
-  let i = 0;
-  while (diff > 0) { counts[i % layers]++; diff--; i++; }
-  while (diff < 0) {
-    // Trim from the largest layer, but never below 1.
+  const counts = new Array(layers).fill(0);
+  for (let L = 0; L < layers; L++) {
+    const desired = Math.floor(total * weights[L] / totalW);
+    const limit = (L === 0) ? cap : Math.min(cap, counts[L - 1]);
+    counts[L] = Math.min(desired, limit);
+  }
+  // Distribute remainder upward through the layers, respecting both caps.
+  // Each pass re-walks layers low → high; bottom's limit is fixed at `cap`,
+  // upper layers' limit follows whatever the layer below ended up at.
+  let remaining = total - counts.reduce((a, b) => a + b, 0);
+  for (let pass = 0; pass < layers + 2 && remaining > 0; pass++) {
+    let placed = false;
+    for (let L = 0; L < layers && remaining > 0; L++) {
+      const limit = (L === 0) ? cap : Math.min(cap, counts[L - 1]);
+      const room = limit - counts[L];
+      if (room <= 0) continue;
+      const take = Math.min(room, remaining);
+      counts[L] += take;
+      remaining -= take;
+      placed = true;
+    }
+    if (!placed) break;
+  }
+  // Trim if over (should not happen with SPT_CAP enforcement, but defensive).
+  while (counts.reduce((a, b) => a + b, 0) > total) {
     const idx = counts.indexOf(Math.max(...counts));
-    if (counts[idx] > 1) { counts[idx]--; diff++; } else break;
+    if (counts[idx] > 1) counts[idx]--; else break;
   }
   return counts;
 }
 
-// Layer-0 footprint: a roughly-square grid sized to the layer-0 tile count.
+// Layer-0 footprint: a roughly-square grid sized to the layer-0 tile count,
+// hard-capped at BOARD_MAX × BOARD_MAX. Caller guarantees layer0Count ≤
+// LAYER_CELL_CAP via distributeTiles.
 function layer0Grid(layer0Count) {
-  const cols = Math.max(3, Math.ceil(Math.sqrt(layer0Count)));
-  const rows = Math.max(3, Math.ceil(layer0Count / cols));
+  const cols = Math.min(BOARD_MAX, Math.max(3, Math.ceil(Math.sqrt(layer0Count))));
+  const rows = Math.min(BOARD_MAX, Math.max(3, Math.ceil(layer0Count / cols)));
   return { cols, rows };
 }
 
