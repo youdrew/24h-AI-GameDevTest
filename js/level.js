@@ -13,6 +13,7 @@
 //   }
 
 import { CONFIG, THEMES, THEME_PERIOD } from './config.js';
+import { DIFFICULTY_KEYFRAMES, DIFFICULTY_INTERPOLATION } from './difficulty.js';
 
 // Theme rotates every THEME_PERIOD levels (default 3). N=1..3 → THEMES[0],
 // N=4..6 → THEMES[1], and so on, cycling through the 6 themes indefinitely.
@@ -21,50 +22,67 @@ export function themeForLevel(N) {
   return THEMES[idx];
 }
 
-// ---- Difficulty formula v3 ------------------------------------------------
+// ---- Difficulty bounds & generation ---------------------------------------
 //
-// Design:
-//   patternTypes(N) — monotonic, +1 every 4 levels, capped at 28
-//   setsPerType(N)  — closed form spt = N - pt + 3, ensures tileCount strictly
-//                     grows by exactly 3 per level (until SPT_CAP).
-//   layers(N)       — **min 2 (every level has overlap)**, +1 every 6 levels,
-//                     capped at 8.
-//   tileCount(N)    — patternTypes × setsPerType × 3 (math-consistent)
-//
-// 2026-04-27: layers floor raised from 1 → 2. Stacked tiles are the core
-// mechanic; single-layer levels degenerate into "click any 3 matching tiles".
-//
-// 2026-04-27 (v3 cap pass): per user spec, board width/height is capped at
-// BOARD_MAX cells. Once layer 0 is full (= BOARD_MAX² tiles), further
-// difficulty comes from depth — layers grow faster (period 15 → 6) and to a
-// higher cap (6 → 8). setsPerType is capped so the total always fits inside
-// LAYER_CAP × BOARD_MAX² (= 800) cells with headroom.
+// Per-level numbers come from `js/difficulty.js` (a hand-editable keyframe
+// table). The constants below are *safety bounds* and physical limits — they
+// clamp keyframe values that would exceed the engine's geometric capacity.
 
-const PT_PERIOD = 4;       // +1 patternType every N levels
-const PT_BASE = 3;         // pt at N=1
 const PT_CAP = 28;         // leave 4 slots before PATTERN_LIBRARY (32) is exhausted
 const SPT_CAP = 6;         // 28 × 6 × 3 = 504 ≤ 8 × 64 = 512 capacity
-const LAYER_PERIOD = 6;    // +1 layer every N levels (after the base 2)
 const LAYER_BASE = 2;      // every level has at least 2 layers (overlap floor)
 const LAYER_CAP = 8;       // visual stacking limit
 export const BOARD_MAX = 8;   // hard cap on cols and rows
 const LAYER_CELL_CAP = BOARD_MAX * BOARD_MAX; // = 64; per-layer tile ceiling
 
+function clamp(v, lo, hi) {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+// Look up the keyframe values for level N. Stepped or linear per the
+// DIFFICULTY_INTERPOLATION mode in difficulty.js.
+function lookupKeyframe(N) {
+  const kfs = DIFFICULTY_KEYFRAMES;
+  if (!kfs.length) {
+    return { patternTypes: 3, setsPerType: 1, layers: 2 };
+  }
+  // Stepped: pick the keyframe with the largest `level` ≤ N. Walk in order
+  // because the table is required to be sorted ascending.
+  let lower = kfs[0];
+  for (const kf of kfs) {
+    if (kf.level <= N) lower = kf;
+    else break;
+  }
+  if (DIFFICULTY_INTERPOLATION !== 'linear') {
+    return { patternTypes: lower.patternTypes, setsPerType: lower.setsPerType, layers: lower.layers };
+  }
+  // Linear: blend with the next keyframe above N (if any).
+  let upper = lower;
+  for (const kf of kfs) {
+    if (kf.level >= N) { upper = kf; break; }
+  }
+  if (lower.level === upper.level || lower.level === N) {
+    return { patternTypes: lower.patternTypes, setsPerType: lower.setsPerType, layers: lower.layers };
+  }
+  const t = (N - lower.level) / (upper.level - lower.level);
+  return {
+    patternTypes: Math.round(lower.patternTypes + t * (upper.patternTypes - lower.patternTypes)),
+    setsPerType:  Math.round(lower.setsPerType  + t * (upper.setsPerType  - lower.setsPerType)),
+    layers:       Math.round(lower.layers       + t * (upper.layers       - lower.layers))
+  };
+}
+
 export function levelParams(N) {
-  // N=1 keeps pt=3 as a tutorial freebie (3 patterns + 7 slots → triple is
-  // unavoidable, you literally can't lose). From N=2 onward, floor pt at 4
-  // so the slot can actually fill without a triple, i.e. failure is possible.
-  const formula = PT_BASE + Math.floor((N - 1) / PT_PERIOD);
-  const patternTypes = N === 1
-    ? Math.min(PT_CAP, PT_BASE)
-    : Math.min(PT_CAP, Math.max(4, formula));
-  const setsPerType = Math.min(SPT_CAP, Math.max(1, N - patternTypes + 3));
+  const raw = lookupKeyframe(N);
+  const patternTypes = clamp(raw.patternTypes, 1, PT_CAP);
+  const setsPerType  = clamp(raw.setsPerType,  1, SPT_CAP);
+  let   layers       = clamp(raw.layers,       LAYER_BASE, LAYER_CAP);
   const tileCount = patternTypes * setsPerType * 3;
-  // Layers: at least the formula amount, but bumped up if we need more depth
-  // to fit `tileCount` under the per-layer cap.
-  const formulaLayers = Math.min(LAYER_CAP, LAYER_BASE + Math.floor((N - 1) / LAYER_PERIOD));
-  const fitLayers = Math.min(LAYER_CAP, Math.max(LAYER_BASE, Math.ceil(tileCount / LAYER_CELL_CAP)));
-  const layers = Math.max(formulaLayers, fitLayers);
+  // Bump layer count up if the keyframe says fewer layers than we need to fit
+  // `tileCount` under the per-layer cell cap. (Keyframes can also be tuned to
+  // grow `layers` faster than this floor — that's still respected.)
+  const fitLayers = clamp(Math.ceil(tileCount / LAYER_CELL_CAP), LAYER_BASE, LAYER_CAP);
+  layers = Math.max(layers, fitLayers);
   return { patternTypes, setsPerType, layers, tileCount };
 }
 

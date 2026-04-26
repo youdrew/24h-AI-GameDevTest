@@ -11,6 +11,23 @@ const FILE_SOURCES = {
   bomb:  'sound/bomb.wav'
 };
 
+// One distinct chord per combo level (1..10). Diatonic walk up C major:
+// each step climbs one scale degree (and an octave at combo 8), so the
+// player hears the chain getting "higher" at every successful triple.
+// Waveform shifts triangle → triangle+sawtooth at high combos for extra zing.
+const COMBO_CHORDS = [
+  { freqs: [523.25, 659.25, 783.99],            wave: 'triangle', peak: 0.18 }, //  1: C  major
+  { freqs: [587.33, 698.46, 880.00],            wave: 'triangle', peak: 0.18 }, //  2: D  minor
+  { freqs: [659.25, 783.99, 987.77],            wave: 'triangle', peak: 0.19 }, //  3: E  minor
+  { freqs: [698.46, 880.00, 1046.50],           wave: 'triangle', peak: 0.19 }, //  4: F  major
+  { freqs: [783.99, 987.77, 1174.66],           wave: 'triangle', peak: 0.20 }, //  5: G  major
+  { freqs: [880.00, 1046.50, 1318.51],          wave: 'sawtooth', peak: 0.16 }, //  6: A  minor
+  { freqs: [987.77, 1174.66, 1479.98],          wave: 'sawtooth', peak: 0.16 }, //  7: B  dim
+  { freqs: [1046.50, 1318.51, 1567.98],         wave: 'sawtooth', peak: 0.17 }, //  8: C  maj (8va)
+  { freqs: [1174.66, 1396.91, 1760.00],         wave: 'sawtooth', peak: 0.17 }, //  9: D  min (8va)
+  { freqs: [1318.51, 1567.98, 1975.53, 2637.02],wave: 'sawtooth', peak: 0.18 }  // 10: E  min (8va) + sparkle
+];
+
 class AudioEngine {
   constructor() {
     this.ctx = null;
@@ -231,25 +248,32 @@ class AudioEngine {
     this._duck();
   }
 
-  // Match (3-tile clear): C-E-G chord, comboLevel shifts up by N semitones (0,1,2,3)
+  // Match (3-tile clear). Each combo level gets its own chord — a diatonic
+  // walk up C major so combo 1 → 10 sounds clearly higher and richer at each
+  // step. comboLevel 0 (non-chain match) plays a single soft note instead of
+  // a chord, so the player still hears the pop without the chain reward feel.
   match(comboLevel = 0) {
     if (!this.unlocked || !storage.state.settings.soundEnabled) return;
-    const semis = Math.min(3, Math.max(0, comboLevel - 1)); // x2→1, x3→2, x4→3
-    const k = Math.pow(2, semis / 12);
-    const base = [523.25, 659.25, 783.99]; // C5, E5, G5
     const t0 = this.ctx.currentTime;
-    base.forEach((f, i) => {
+    if (comboLevel <= 0) {
+      this._osc({ type: 'triangle', freq: 523.25, attack: 0.005, decay: 0.18, peak: 0.16 });
+      this._duck();
+      return;
+    }
+    const idx = Math.min(COMBO_CHORDS.length - 1, comboLevel - 1);
+    const { freqs, wave, peak } = COMBO_CHORDS[idx];
+    freqs.forEach((f, i) => {
       const o = this.ctx.createOscillator();
       const g = this.ctx.createGain();
-      o.type = 'triangle';
-      o.frequency.value = f * k;
+      o.type = wave;
+      o.frequency.value = f;
       o.connect(g);
       g.connect(this.sfxGain);
       g.gain.setValueAtTime(0, t0);
-      g.gain.linearRampToValueAtTime(0.18, t0 + 0.005 + i * 0.01);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.4);
+      g.gain.linearRampToValueAtTime(peak, t0 + 0.005 + i * 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.42);
       o.start(t0);
-      o.stop(t0 + 0.45);
+      o.stop(t0 + 0.48);
     });
     this._duck();
   }

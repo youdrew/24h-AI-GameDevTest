@@ -1,6 +1,6 @@
 // Tile Explorer — game state machine + glue between board/slot/audio/UI
 
-import { CONFIG, POWERUPS, POWERUP_ORDER, THEMES, encodeAssetPath } from './config.js';
+import { CONFIG, POWERUPS, POWERUP_ORDER, encodeAssetPath } from './config.js';
 import { storage } from './storage.js';
 import { audio } from './audio.js';
 import { Board } from './board.js';
@@ -23,7 +23,11 @@ export class Game {
     this.powerupLayer = new PIXI.Container();
     this.effectLayer = new PIXI.Container();
     this.bgSprite = null;
-    this.currentTheme = THEMES[0];
+    // Start as null so the first startLevel() — even for theme[0] — always
+    // triggers the bg-image + BGM load. (Otherwise levels 1–3 share the
+    // default theme, the equality check below is true, and the apply block
+    // is skipped, leaving no background and no music.)
+    this.currentTheme = null;
 
     this.board = new Board(app);
     this.boardLayer.addChild(this.board.container);
