@@ -120,8 +120,14 @@ export class Game {
     const visiblePowerups = POWERUP_ORDER.filter((id) => this.level >= POWERUPS[id].unlock);
     const slotSize = this.slot.cellSize || 56;
     const yBase = screen.height - slotSize - 24 - 80;
-    const w = 64, gap = 10;
-    const total = visiblePowerups.length * w + (visiblePowerups.length - 1) * gap;
+    const baseW = 64, baseGap = 10;
+    const baseTotal = visiblePowerups.length * baseW + Math.max(0, visiblePowerups.length - 1) * baseGap;
+    // Shrink buttons proportionally if they would overflow on narrow screens
+    // (at level 5 there are 5 visible, level 10+ has 5–6, level 51+ has all 6).
+    const avail = Math.max(0, screen.width - 24);
+    const scale = Math.min(1, avail / Math.max(1, baseTotal));
+    const w = baseW * scale, gap = baseGap * scale;
+    const total = visiblePowerups.length * w + Math.max(0, visiblePowerups.length - 1) * gap;
     const startX = (screen.width - total) / 2 + w / 2;
     let i = 0;
     for (const id of POWERUP_ORDER) {
@@ -130,6 +136,7 @@ export class Game {
         btn.visible = true;
         btn.x = startX + i * (w + gap);
         btn.y = yBase;
+        btn.scale.set(scale);
         i++;
       } else {
         btn.visible = false;
@@ -424,19 +431,10 @@ export class Game {
       return;
     }
 
-    // Check loss
+    // Check loss: tray full = lost. Powerups (undo / bomb / trashOut) had to
+    // be used before this click; once all 7 cells are occupied the round ends.
     if (this.slot.isFull()) {
-      // Slot full: see if any uncovered tile pattern can still combine into 3
-      const counts = this.slot.patternCounts();
-      let canStillMatch = false;
-      const uncovered = this.board.getUncoveredTiles();
-      for (const t of uncovered) {
-        const c = counts.get(t.patternId) || 0;
-        if (c >= 2) { canStillMatch = true; break; } // adding it would make 3
-      }
-      if (!canStillMatch) {
-        this._handleGameOver();
-      }
+      this._handleGameOver();
     }
   }
 
@@ -528,6 +526,12 @@ export class Game {
     } else if (id === 'bomb') {
       this.activePowerupMode = (this.activePowerupMode === 'bomb' ? null : 'bomb');
       if (this.onShowToast && this.activePowerupMode) this.onShowToast('点击一个瓦片引爆');
+    } else if (id === 'trashOut') {
+      const ok = this._applyTrashOut();
+      if (ok) {
+        this.usedHardPowerup = true;
+        storage.consumePowerup(id);
+      }
     } else if (id === 'freeze') {
       this.activePowerupMode = (this.activePowerupMode === 'freeze' ? null : 'freeze');
       if (this.onShowToast && this.activePowerupMode) this.onShowToast('点击一个瓦片冰冻 3 次下落');
@@ -557,6 +561,28 @@ export class Game {
     const triple = this.board.findHintTriple();
     if (triple) this.board.highlightTriple(triple);
     else if (this.onShowToast) this.onShowToast('暂无可提示组合');
+  }
+
+  // 扔垃圾: snapshot patternIds in slot, clear slot, scatter onto board.
+  // Returns true if anything was thrown back (false → nothing in slot to toss).
+  _applyTrashOut() {
+    const patternIds = [];
+    for (const cell of this.slot.cells) {
+      if (cell.patternId !== null) patternIds.push(cell.patternId);
+    }
+    if (patternIds.length === 0) {
+      if (this.onShowToast) this.onShowToast('选中栏是空的');
+      return false;
+    }
+    audio.shuffle();
+    this.slot.clear();
+    const placed = this.board.trashTilesToBoard(patternIds);
+    if (placed < patternIds.length && this.onShowToast) {
+      this.onShowToast(`版面已满，仅扔回了 ${placed}/${patternIds.length} 块`);
+    }
+    this.board.refreshCoverage();
+    this._resetChain();
+    return true;
   }
 
   _applyBomb(tile) {

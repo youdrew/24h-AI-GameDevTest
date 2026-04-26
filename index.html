@@ -113,7 +113,10 @@
           <p id="complete-rank" class="hint">提交排行榜中…</p>
           <p class="hint">选择一个道具作为奖励：</p>
           <div id="reward-grid" class="reward-grid"></div>
+          <div id="reward-desc" class="reward-desc"></div>
           <button class="btn btn-primary hidden" data-action="next-level" id="btn-next-level">下一关</button>
+          <button class="btn btn-skip" data-action="skip-reward">不选择道具，直接进入下一关</button>
+          <button class="btn" data-action="record-rank">记录排名</button>
         </div>
       </div>
 
@@ -123,6 +126,7 @@
           <h2>关卡失败</h2>
           <p class="hint">槽位栏满了。再试一次！</p>
           <button class="btn btn-primary" data-action="restart">重新开始</button>
+          <button class="btn" data-action="record-rank">记录排名</button>
           <button class="btn" data-action="quit-to-menu">返回主菜单</button>
         </div>
       </div>

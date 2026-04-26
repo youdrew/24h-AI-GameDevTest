@@ -60,6 +60,7 @@ class UI {
         case 'restart': this._handleRestart(); break;
         case 'quit-to-menu': this._handleQuitMenu(); break;
         case 'next-level': this._handleNextLevel(); break;
+        case 'skip-reward': this._handleSkipReward(); break;
         case 'record-rank': this._handleRecordRank(); break;
         case 'open-dev-jump': this._handleOpenDevJump(); break;
         case 'dev-jump-go': this._handleDevJumpGo(); break;
@@ -253,26 +254,41 @@ class UI {
     this.showMenu();
   }
 
-  // Pause-panel: push the local best record for the current level to Supabase.
-  // Submits whatever is in storage (best stars + best steps for that level);
-  // does NOT submit in-progress steps from the active run.
+  // Pause-panel / complete-panel: push the local best record for the current
+  // level to Supabase. Submits whatever is in storage (best stars + best steps
+  // for that level); does NOT submit in-progress steps from the active run.
   async _handleRecordRank() {
     const level = this.game.level || storage.state.currentLevel;
     if (!leaderboard.isConfigured()) {
-      this.toast('排行榜未配置');
+      this.toast('排行榜未配置（Supabase URL/Key 留空）');
+      return;
+    }
+    const stars = storage.getStars(level);
+    if (!stars) {
+      this.toast('本关尚未通关，无法上传');
       return;
     }
     const record = storage.getBestRecord(level);
     if (!record) {
-      this.toast('请先完成本关再上传');
+      // Legacy completions saved stars but no steps. Tell the player so they
+      // know one more clear is needed for the cloud upload to work.
+      this.toast('本地缺少步数记录，请再通关一次本关');
       return;
     }
-    this.toast('上传中…');
+    this.toast(`上传中… ★${record.stars} · ${record.steps} 步`);
     try {
       const res = await leaderboard.submit({ level, stars: record.stars, steps: record.steps });
-      this.toast(res ? '已上传到排行榜' : '已加入离线队列');
-    } catch {
-      this.toast('上传失败，已加入离线队列');
+      if (res) {
+        this.toast(`已上传：第 ${level} 关 ★${record.stars} · ${record.steps} 步`);
+      } else {
+        // submit() returned null — the offline-queue branch fired or the name
+        // failed validation. Surface it; the queue will retry on reconnect.
+        this.toast('上传未成功，已加入离线队列');
+        console.warn('[record-rank] submit returned null', { level, record });
+      }
+    } catch (err) {
+      this.toast('上传失败：' + (err?.message || err));
+      console.error('[record-rank] submit threw', err);
     }
   }
 
@@ -283,6 +299,16 @@ class UI {
       return;
     }
     storage.addPowerup(this.selectedReward, 1);
+    this._advanceToNextLevel();
+  }
+
+  // Highlighted "skip reward" button: advance without granting a powerup.
+  _handleSkipReward() {
+    if (!this.completeData) return;
+    this._advanceToNextLevel();
+  }
+
+  _advanceToNextLevel() {
     const next = Math.min(this.completeData.level + 1, 9999);
     storage.setLevel(next);
     this.completeData = null;
@@ -342,6 +368,27 @@ class UI {
       });
       grid.appendChild(btn);
     });
+
+    // Description block — one short line per powerup so the player can decide
+    // without remembering each icon.
+    const descBox = this._$('reward-desc');
+    if (descBox) {
+      descBox.innerHTML = '';
+      POWERUP_ORDER.forEach((id) => {
+        const p = POWERUPS[id];
+        const row = document.createElement('div');
+        row.className = 'reward-desc-row';
+        const ic = document.createElement('span');
+        ic.className = 'reward-desc-ic';
+        ic.textContent = p.icon;
+        const txt = document.createElement('span');
+        txt.className = 'reward-desc-txt';
+        txt.textContent = `${p.label} · ${p.desc || ''}`;
+        row.appendChild(ic);
+        row.appendChild(txt);
+        descBox.appendChild(row);
+      });
+    }
 
     this._showPanel('panel-complete');
   }

@@ -369,6 +369,54 @@ export class Board {
     return false;
   }
 
+  // Used by the 扔垃圾 powerup. Scatters the supplied patternIds across the
+  // board at random unoccupied (gx, gy, layer) cells, fading each tile in.
+  // Returns the number of tiles successfully placed.
+  trashTilesToBoard(patternIds, rand = Math.random) {
+    if (!this.layout || !this.layerContainers.length) return 0;
+    const { params, boardSize } = this.layout;
+    let placed = 0;
+    for (const patternId of patternIds) {
+      let chosen = null;
+      // Quick random sampling first; fall back to a brute-force scan if the
+      // board is densely packed.
+      for (let attempt = 0; attempt < 50; attempt++) {
+        const layer = Math.floor(rand() * params.layers);
+        const gx = Math.floor(rand() * boardSize.cols);
+        const gy = Math.floor(rand() * boardSize.rows);
+        if (!this._isCellOccupied(gx, gy, layer)) {
+          chosen = { gx, gy, layer };
+          break;
+        }
+      }
+      if (!chosen) {
+        outer:
+        for (let l = 0; l < params.layers; l++) {
+          for (let y = 0; y < boardSize.rows; y++) {
+            for (let x = 0; x < boardSize.cols; x++) {
+              if (!this._isCellOccupied(x, y, l)) {
+                chosen = { gx: x, gy: y, layer: l };
+                break outer;
+              }
+            }
+          }
+        }
+      }
+      if (!chosen) break;
+
+      const newId = this._nextDropId++;
+      const tileData = { id: newId, patternId, layer: chosen.layer, gridX: chosen.gx, gridY: chosen.gy };
+      const sprite = this._makeTile(tileData);
+      this.layerContainers[chosen.layer].addChild(sprite);
+      this.tilesById.set(newId, sprite);
+      this._positionSprite(sprite);
+      sprite.alpha = 0;
+      anim.to(sprite, { alpha: 1 }, { duration: 0.28, ease: 'easeOutCubic' });
+      placed++;
+    }
+    return placed;
+  }
+
   freezeTile(id, drops = 3) {
     if (!this.tilesById.has(id)) return false;
     this.frozenTiles.set(id, drops);

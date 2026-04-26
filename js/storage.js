@@ -9,7 +9,7 @@ function defaultState() {
     currentLevel: 1,
     stars: {},
     bestSteps: {},
-    powerups: { shuffle: 0, undo: 0, hint: 0, bomb: 0, freeze: 0 },
+    powerups: { shuffle: 0, undo: 0, hint: 0, bomb: 0, trashOut: 0, freeze: 0 },
     settings: {
       soundEnabled: true,
       musicEnabled: true
