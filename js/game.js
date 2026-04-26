@@ -32,11 +32,13 @@ export class Game {
     this.level = 1;
     this.steps = 0;
     this.usedHardPowerup = false;        // shuffle/undo/bomb/freeze
+    // Combo accumulates monotonically (0..COMBO_METER_MAX). It only resets
+    // when it hits the cap and auto-fires lightning. Chain state (pattern +
+    // count) is independent — chain breaks only gate whether the *next* match
+    // earns a combo, never decay the accumulator.
     this.combo = 0;
-    this.comboTimer = 0;                 // ms remaining
-    this.comboMeter = 0;
-    this.chainPattern = null;            // active combo-chain patternId (null = no chain)
-    this.chainCount = 0;                 // consecutive same-pattern clicks in current chain
+    this.chainPattern = null;
+    this.chainCount = 0;
     this.optimalSteps = null;
     this.tilePopHistory = [];            // for undo, stack of { sourceTileId, slotIndex }
     this.matchClearsThisRound = 0;       // for falling-queue trigger
@@ -54,9 +56,6 @@ export class Game {
     this.onTutorial = null;              // (key) => void
 
     this.board.onTileClick = (tile) => this.handleTileClick(tile);
-
-    // Combo timer ticker
-    app.ticker.add((dt) => this._updateCombo(dt));
   }
 
   _buildStatusBar() {
@@ -68,15 +67,6 @@ export class Game {
     txt.y = 18;
     this.statusBar.addChild(txt);
     this.statusText = txt;
-
-    const stars = new PIXI.Text('☆☆☆', {
-      fontFamily: 'system-ui, sans-serif',
-      fontSize: 22, fill: 0xfbbf24
-    });
-    stars.anchor.set(1, 0);
-    stars.y = 18;
-    this.statusBar.addChild(stars);
-    this.starsText = stars;
 
     this._refreshStatusBar();
   }
@@ -166,8 +156,6 @@ export class Game {
 
   _buildComboMeter() {
     this.comboMeterContainer = new PIXI.Container();
-    this.comboMeterContainer.eventMode = 'static';
-    this.comboMeterContainer.cursor = 'pointer';
     const meterBg = new PIXI.Graphics();
     this.comboMeterContainer.addChild(meterBg);
     this.comboMeterBg = meterBg;
@@ -179,7 +167,6 @@ export class Game {
     }
     this.comboMeterCells = cells;
     this.statusBar.addChild(this.comboMeterContainer);
-    this.comboMeterContainer.on('pointertap', () => this._releaseComboMeter());
     this._renderComboMeter();
   }
 
@@ -197,23 +184,16 @@ export class Game {
     for (let i = 0; i < CONFIG.COMBO_METER_MAX; i++) {
       const g = this.comboMeterCells[i];
       g.clear();
-      const filled = i < this.comboMeter;
-      const color = filled ? (this.comboMeter >= CONFIG.COMBO_METER_MAX ? 0xfbbf24 : 0x6ee7b7) : 0x232a3d;
+      const filled = i < this.combo;
+      const color = filled ? 0x6ee7b7 : 0x232a3d;
       g.beginFill(color, filled ? 0.9 : 0.7);
       g.drawRoundedRect(x + i * (cellW + 1), y, cellW, cellH, 3);
       g.endFill();
     }
-    this.comboMeterContainer.eventMode = (this.comboMeter >= CONFIG.COMBO_METER_MAX) ? 'static' : 'none';
-    this.comboMeterContainer.cursor = (this.comboMeter >= CONFIG.COMBO_METER_MAX) ? 'pointer' : 'default';
   }
 
   _refreshStatusBar() {
-    const screen = this.app.renderer.screen;
     this.statusText.text = `第 ${this.level} 关`;
-    const stars = storage.getStars(this.level);
-    this.starsText.text = '★'.repeat(stars) + '☆'.repeat(3 - stars);
-    // Leave room on the far right for the DOM pause button (40px wide @ right:12px).
-    this.starsText.x = screen.width - 64;
     this._renderComboMeter();
   }
 
@@ -233,8 +213,6 @@ export class Game {
     this.steps = 0;
     this.usedHardPowerup = false;
     this.combo = 0;
-    this.comboTimer = 0;
-    this.comboMeter = 0;
     this.chainPattern = null;
     this.chainCount = 0;
     this.tilePopHistory = [];
@@ -340,21 +318,17 @@ export class Game {
     }
 
     if (this.slot.isFull()) {
-      // Clicking another tile while full just resets combo
-      this._resetCombo();
+      // Tray full + click: reject and warn. Chain stays as-is; combo never
+      // decays.
       audio.warning();
       return;
     }
 
-    // Combo chain rule: a chain is a continuous run of clicks on the SAME
-    // patternId. Selecting a different pattern breaks the chain (combo + meter
-    // reset to 0); the new click starts a fresh chain on its own pattern.
-    // chainCount tracks the run length — a triple-match only earns a combo
-    // when chainCount >= 3 at the moment the match resolves (i.e. the matched
-    // triple was actually built by the current uninterrupted chain).
-    if (this.chainPattern !== null && tile.patternId !== this.chainPattern) {
-      this._resetCombo();
-    }
+    // Chain tracking: how many same-pattern clicks the player has made in a
+    // row. Matters only as the gate for the *next* combo tick — a triple
+    // earns combo +1 only when chainCount >= 3 (the triple came entirely from
+    // the current chain). A different-pattern click resets chainCount to 1
+    // but does NOT touch the combo accumulator.
     if (this.chainPattern === tile.patternId) {
       this.chainCount += 1;
     } else {
@@ -412,19 +386,19 @@ export class Game {
       }
 
       if (playerInitiated && this.chainCount >= 3) {
-        // Chain produced its own triple → combo + meter both step by 1.
+        // Chain built its own triple — combo accumulator advances by 1.
         this.combo++;
-        this.comboTimer = CONFIG.COMBO_WINDOW_MS;
-        this.comboMeter = Math.min(CONFIG.COMBO_METER_MAX, this.comboMeter + 1);
         this._showComboLabel();
         audio.match(this.combo);
         this._vibrate(CONFIG.VIBE_MATCH);
-        if (this.combo >= 5) {
+        if (this.combo >= CONFIG.COMBO_METER_MAX) {
+          // Auto-fire lightning at the cap, then start a fresh round.
           this._triggerLightning();
+          this.combo = 0;
         }
       } else {
         // Match happened but not from a clean ≥3 chain (or it's a falling
-        // -queue match): play the plain pop sound, no combo or meter gain.
+        // -queue match): play the plain pop sound, no combo gain.
         audio.match(0);
       }
       this.matchClearsThisRound++;
@@ -468,26 +442,12 @@ export class Game {
 
   // ---- Combo ----------------------------------------------------------------
 
-  _updateCombo(dt) {
-    if (this.state !== STATES.PLAYING) return;
-    if (this.combo === 0) return;
-    if (this._processing) return;     // freeze combo decay during click animation
-    this.comboTimer -= (dt / 60) * 1000;
-    if (this.comboTimer <= 0) {
-      this._resetCombo();
-    }
-  }
-
-  _resetCombo() {
-    if (this.combo === 0 && this.comboMeter === 0 && this.chainPattern === null && this.chainCount === 0) return;
-    this.combo = 0;
-    this.comboTimer = 0;
+  // Reset only the chain (used by undo). Combo never decays — it only resets
+  // when it auto-fires lightning at the cap.
+  _resetChain() {
+    if (this.chainPattern === null && this.chainCount === 0) return;
     this.chainPattern = null;
     this.chainCount = 0;
-    // Spec: "断连时蓄力条清空" — chain break empties the meter completely.
-    // (Lightning charge at full is also lost on chain break, by design.)
-    this.comboMeter = 0;
-    this._renderComboMeter();
   }
 
   _showComboLabel() {
@@ -523,15 +483,7 @@ export class Game {
     for (const [pid, c] of counts) {
       if (c >= 3 && c < lowest) { lowest = c; target = pid; }
     }
-    if (target === null) {
-      // No pattern has ≥3 remaining — refund the meter so a meter-release click
-      // doesn't burn the player's stored charge for nothing.
-      if (this.comboMeter < CONFIG.COMBO_METER_MAX) {
-        this.comboMeter = CONFIG.COMBO_METER_MAX;
-        this._renderComboMeter();
-      }
-      return;
-    }
+    if (target === null) return;
 
     audio.lightning();
     anim.flash(this.effectLayer, 0xffffff, 0.7, 0.3);
@@ -550,13 +502,6 @@ export class Game {
     setTimeout(() => {
       if (this.board.isEmpty()) this._handleLevelComplete();
     }, 100);
-  }
-
-  _releaseComboMeter() {
-    if (this.comboMeter < CONFIG.COMBO_METER_MAX) return;
-    this.comboMeter = 0;
-    this._renderComboMeter();
-    this._triggerLightning();
   }
 
   // ---- Powerups -------------------------------------------------------------
@@ -603,7 +548,7 @@ export class Game {
     if (popped.sprite) popped.sprite.destroy();
     this.board.restoreTile(popped.sourceTileId);
     this.steps = Math.max(0, this.steps - 1);
-    this._resetCombo();
+    this._resetChain();
     return true;
   }
 
@@ -700,7 +645,7 @@ export class Game {
     audio.win();
     this._vibrate([60, 40, 60]);
     const stars = this._computeStars();
-    storage.setStars(this.level, stars);
+    storage.setStars(this.level, stars, this.steps);
     if (this.onLevelComplete) {
       this.onLevelComplete({
         level: this.level,

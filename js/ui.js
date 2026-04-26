@@ -60,6 +60,7 @@ class UI {
         case 'restart': this._handleRestart(); break;
         case 'quit-to-menu': this._handleQuitMenu(); break;
         case 'next-level': this._handleNextLevel(); break;
+        case 'record-rank': this._handleRecordRank(); break;
         case 'open-dev-jump': this._handleOpenDevJump(); break;
         case 'dev-jump-go': this._handleDevJumpGo(); break;
       }
@@ -250,6 +251,29 @@ class UI {
   _handleQuitMenu() {
     this.game.state = 'menu';
     this.showMenu();
+  }
+
+  // Pause-panel: push the local best record for the current level to Supabase.
+  // Submits whatever is in storage (best stars + best steps for that level);
+  // does NOT submit in-progress steps from the active run.
+  async _handleRecordRank() {
+    const level = this.game.level || storage.state.currentLevel;
+    if (!leaderboard.isConfigured()) {
+      this.toast('排行榜未配置');
+      return;
+    }
+    const record = storage.getBestRecord(level);
+    if (!record) {
+      this.toast('请先完成本关再上传');
+      return;
+    }
+    this.toast('上传中…');
+    try {
+      const res = await leaderboard.submit({ level, stars: record.stars, steps: record.steps });
+      this.toast(res ? '已上传到排行榜' : '已加入离线队列');
+    } catch {
+      this.toast('上传失败，已加入离线队列');
+    }
   }
 
   _handleNextLevel() {

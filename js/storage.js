@@ -8,6 +8,7 @@ function defaultState() {
     schemaVersion: CURRENT_VERSION,
     currentLevel: 1,
     stars: {},
+    bestSteps: {},
     powerups: { shuffle: 0, undo: 0, hint: 0, bomb: 0, freeze: 0 },
     settings: {
       soundEnabled: true,
@@ -65,6 +66,7 @@ function mergeWithDefaults(state) {
     settings: { ...base.settings, ...(state.settings || {}) },
     tutorialSeen: { ...base.tutorialSeen, ...(state.tutorialSeen || {}) },
     stars: state.stars || {},
+    bestSteps: state.bestSteps || {},
     levelCache: state.levelCache || {},
     pendingSubmissions: state.pendingSubmissions || []
   };
@@ -122,17 +124,37 @@ export const storage = {
     write();
   },
 
-  setStars(level, stars) {
+  // Updates the level's best record. A run is "better" when it earns more
+  // stars; ties are broken by fewer steps. `steps` is optional for back-compat.
+  setStars(level, stars, steps) {
     const state = read();
-    const prev = state.stars[level] || 0;
-    if (stars > prev) {
+    const prevStars = state.stars[level] || 0;
+    const prevSteps = state.bestSteps[level];
+    let dirty = false;
+    if (stars > prevStars) {
       state.stars[level] = stars;
-      write();
+      dirty = true;
     }
+    if (typeof steps === 'number' && stars >= prevStars) {
+      // On a star-improvement OR a steps-improvement at equal stars, replace.
+      if (stars > prevStars || prevSteps == null || steps < prevSteps) {
+        state.bestSteps[level] = steps;
+        dirty = true;
+      }
+    }
+    if (dirty) write();
   },
 
   getStars(level) {
     return read().stars[level] || 0;
+  },
+
+  getBestRecord(level) {
+    const s = read();
+    const stars = s.stars[level] || 0;
+    const steps = s.bestSteps[level];
+    if (!stars || steps == null) return null;
+    return { stars, steps };
   },
 
   addPowerup(id, count = 1) {

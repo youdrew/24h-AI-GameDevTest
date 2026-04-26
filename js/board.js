@@ -4,6 +4,18 @@ import { CONFIG, PATTERN_LIBRARY, TILE_BG_COLORS } from './config.js';
 import { computeCoverage } from './level.js';
 import { anim } from './animation.js';
 
+// Per-layer covered-tile alpha decay. Geometric (constant ratio per step) is
+// what the Weber-Fechner law predicts for perceptually uniform brightness
+// gradations — every layer-deep step "feels" like an equal fade. The 0.4
+// floor preserves the legacy minimum so very deep tiles remain identifiable.
+const COVERED_DECAY = 0.85;
+const COVERED_MIN_ALPHA = 0.4;
+
+function coveredAlphaForLayer(layer, topLayer) {
+  const depth = Math.max(0, topLayer - layer);
+  return Math.max(COVERED_MIN_ALPHA, Math.pow(COVERED_DECAY, depth));
+}
+
 export class Board {
   constructor(app) {
     this.app = app;
@@ -138,17 +150,18 @@ export class Board {
       if (!sprite.tileData.removed) remaining.push(sprite.tileData);
     }
     const covered = computeCoverage(remaining);
+    const topLayer = (this.layout?.params?.layers ?? 1) - 1;
     for (const sprite of this.tilesById.values()) {
       const t = sprite.tileData;
       if (t.removed) continue;
       const wasCovered = t.covered;
       t.covered = covered.has(t.id);
       if (t.covered) {
-        sprite.alpha = 0.4;
+        sprite.alpha = coveredAlphaForLayer(t.layer, topLayer);
         sprite.eventMode = 'none';
       } else {
         if (wasCovered && sprite.alpha < 1) {
-          // Reveal animation
+          // Reveal animation — fade up to fully visible.
           anim.cancelTweens(sprite);
           anim.to(sprite, { alpha: 1 }, { duration: 0.3 });
         } else {
