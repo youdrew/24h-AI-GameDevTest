@@ -25,10 +25,26 @@ self.onmessage = (e) => {
   }
 };
 
+// Coverage rule (must match js/level.js computeCoverage()):
+//   B (higher layer) covers A iff |(bx-ax)*PITCH + d*OFFSET| < TILE on both axes,
+//   where d = Lb - La > 0, PITCH = TILE_SIZE + TILE_GAP, OFFSET = TILE_SIZE / 4,
+//   sign = +1 (matches board.js +t.layer*layerOffset rendering).
+const TILE_PX = 48;
+const PITCH_PX = 52;
+const LAYER_OFFSET_PX = 12;
+const LAYER_OFFSET_SIGN = +1;
+const SEARCH_RANGE = LAYER_OFFSET_SIGN > 0 ? [-2, -1, 0] : [0, 1, 2];
+
+function tilesOverlap(a, b) {
+  const d = b.layer - a.layer;
+  if (d <= 0) return false;
+  const dxPx = (b.gridX - a.gridX) * PITCH_PX + LAYER_OFFSET_SIGN * d * LAYER_OFFSET_PX;
+  if (Math.abs(dxPx) >= TILE_PX) return false;
+  const dyPx = (b.gridY - a.gridY) * PITCH_PX + LAYER_OFFSET_SIGN * d * LAYER_OFFSET_PX;
+  return Math.abs(dyPx) < TILE_PX;
+}
+
 function solve(tilesIn, slotCapacity, timedOut) {
-  // Build coverage representation:
-  //   For each tile, list of tile ids on strictly higher layer at same cell.
-  //   A tile is uncovered <=> all of those tiles have been removed.
   const tiles = tilesIn.map((t) => ({ ...t }));
   const byCell = new Map();
   for (const t of tiles) {
@@ -36,16 +52,19 @@ function solve(tilesIn, slotCapacity, timedOut) {
     if (!byCell.has(k)) byCell.set(k, []);
     byCell.get(k).push(t);
   }
-  // For each tile, the "blockers" are tiles in same cell on higher layers
   const blockers = new Map();
-  for (const list of byCell.values()) {
-    list.sort((a, b) => a.layer - b.layer);
-    for (let i = 0; i < list.length - 1; i++) {
-      const me = list[i];
-      const above = list.slice(i + 1).map((t) => t.id);
-      blockers.set(me.id, above);
+  for (const a of tiles) {
+    const above = [];
+    for (const ddx of SEARCH_RANGE) {
+      for (const ddy of SEARCH_RANGE) {
+        const list = byCell.get(`${a.gridX + ddx},${a.gridY + ddy}`);
+        if (!list) continue;
+        for (const b of list) {
+          if (b.layer > a.layer && tilesOverlap(a, b)) above.push(b.id);
+        }
+      }
     }
-    blockers.set(list[list.length - 1].id, []);
+    blockers.set(a.id, above);
   }
 
   const removed = new Set();

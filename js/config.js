@@ -6,8 +6,8 @@
 
 export const CONFIG = {
   // Leaderboard (Supabase)
-  SUPABASE_URL: '',         // e.g. 'https://xxxx.supabase.co'
-  SUPABASE_ANON_KEY: '',    // public anon key
+  SUPABASE_URL: 'https://tskrthvpwalstnszqisl.supabase.co',         // e.g. 'https://tskrthvpwalstnszqisl.supabase.co'
+  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRza3J0aHZwd2Fsc3Ruc3pxaXNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMTY4MjEsImV4cCI6MjA5Mjc5MjgyMX0.35xVQSHoR2bxPRFN27lmLfW-Cp4BYUGrKoOYsTYjloI',    // public anon key
 
   // Game tuning
   SLOT_CAPACITY: 7,
@@ -17,9 +17,14 @@ export const CONFIG = {
   TILE_GAP: 4,
 
   // Solver budgets (ms)
-  SOLVER_TIMEOUT_SMALL: 50,
-  SOLVER_TIMEOUT_MEDIUM: 500,
-  SOLVER_TIMEOUT_LARGE: 2000,
+  // Thresholds tuned for difficulty formula v3 (every level grows by ≥3 tiles).
+  // Tutorial-zone levels (1–9) cover 9–24 tiles → small budget.
+  SOLVER_TIMEOUT_SMALL: 200,
+  SOLVER_TIMEOUT_MEDIUM: 800,
+  SOLVER_TIMEOUT_LARGE: 2500,
+  SOLVER_THRESH_SMALL: 30,    // tileCount ≤ 30 → small budget
+  SOLVER_THRESH_MEDIUM: 120,  // tileCount ≤ 120 → medium; else large
+                              //   (tutorial L=1..9 maxes at 105 tiles → MEDIUM)
   SOLVER_MAX_RETRIES: 20,
 
   // Audio

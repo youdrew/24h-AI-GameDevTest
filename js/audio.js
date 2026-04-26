@@ -7,7 +7,8 @@ import { storage } from './storage.js';
 const FILE_SOURCES = {
   win:   'sound/win.wav',
   fail:  'sound/failure.wav',
-  item:  'sound/SoundofUsingItems.wav'
+  item:  'sound/SoundofUsingItems.wav',
+  bomb:  'sound/bomb.wav'
 };
 
 class AudioEngine {
@@ -301,23 +302,9 @@ class AudioEngine {
     this._duck();
   }
 
-  // Bomb: low impact + crackle
+  // Bomb: file-based explosion sample (sound/bomb.wav)
   bomb() {
-    if (!this.unlocked || !storage.state.settings.soundEnabled) return;
-    const t0 = this.ctx.currentTime;
-    const len = Math.floor(this.ctx.sampleRate * 0.25);
-    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2);
-    const noise = this.ctx.createBufferSource();
-    noise.buffer = buf;
-    const lp = this.ctx.createBiquadFilter();
-    lp.type = 'lowpass'; lp.frequency.value = 400;
-    const g = this.ctx.createGain(); g.gain.value = 0.32;
-    noise.connect(lp); lp.connect(g); g.connect(this.sfxGain);
-    noise.start(t0);
-    this._osc({ type: 'sine', freq: 120, slideTo: 60, slideTime: 0.18, attack: 0.005, decay: 0.2, peak: 0.4 });
-    this._duck();
+    this.playFile('bomb');
   }
 
   // Freeze: shimmery descending tones

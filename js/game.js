@@ -35,6 +35,7 @@ export class Game {
     this.combo = 0;
     this.comboTimer = 0;                 // ms remaining
     this.comboMeter = 0;
+    this.chainPattern = null;            // active combo-chain patternId (null = no chain)
     this.optimalSteps = null;
     this.tilePopHistory = [];            // for undo, stack of { sourceTileId, slotIndex }
     this.matchClearsThisRound = 0;       // for falling-queue trigger
@@ -232,6 +233,7 @@ export class Game {
     this.combo = 0;
     this.comboTimer = 0;
     this.comboMeter = 0;
+    this.chainPattern = null;
     this.tilePopHistory = [];
     this.matchClearsThisRound = 0;
     this.activePowerupMode = null;
@@ -277,9 +279,9 @@ export class Game {
       return;
     }
     const tileCount = layout.tiles.length;
-    const timeoutMs = tileCount <= 18 ? CONFIG.SOLVER_TIMEOUT_SMALL
-                    : tileCount <= 54 ? CONFIG.SOLVER_TIMEOUT_MEDIUM
-                                       : CONFIG.SOLVER_TIMEOUT_LARGE;
+    const timeoutMs = tileCount <= CONFIG.SOLVER_THRESH_SMALL  ? CONFIG.SOLVER_TIMEOUT_SMALL
+                    : tileCount <= CONFIG.SOLVER_THRESH_MEDIUM ? CONFIG.SOLVER_TIMEOUT_MEDIUM
+                                                                : CONFIG.SOLVER_TIMEOUT_LARGE;
     let settled = false;
     const settle = (steps, reason) => {
       if (settled) return;
@@ -340,6 +342,14 @@ export class Game {
       audio.warning();
       return;
     }
+
+    // Combo chain rule: a chain is a continuous run of clicks on the SAME
+    // patternId. Selecting a different pattern breaks the chain (combo + meter
+    // reset to 0); the new click starts a fresh chain on its own pattern.
+    if (this.chainPattern !== null && tile.patternId !== this.chainPattern) {
+      this._resetCombo();
+    }
+    this.chainPattern = tile.patternId;
 
     audio.unlock();
     audio.tap();
@@ -462,12 +472,13 @@ export class Game {
   }
 
   _resetCombo() {
-    if (this.combo === 0 && this.comboMeter === 0) return;
+    if (this.combo === 0 && this.comboMeter === 0 && this.chainPattern === null) return;
     this.combo = 0;
     this.comboTimer = 0;
-    if (this.comboMeter < CONFIG.COMBO_METER_MAX) {
-      this.comboMeter = Math.max(0, this.comboMeter - 2);
-    }
+    this.chainPattern = null;
+    // Spec: "断连时蓄力条清空" — chain break empties the meter completely.
+    // (Lightning charge at full is also lost on chain break, by design.)
+    this.comboMeter = 0;
     this._renderComboMeter();
   }
 

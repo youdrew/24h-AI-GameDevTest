@@ -1,6 +1,7 @@
 /* Tile Explorer Service Worker — caches CDN + static assets for offline play */
 
-const VERSION = 'tile-explorer-v1';
+// Bump VERSION whenever shipping new JS/CSS/HTML — old caches are deleted on activate.
+const VERSION = 'tile-explorer-v4';
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 
@@ -26,7 +27,8 @@ const PRECACHE = [
   './js/config.js',
   './sound/win.wav',
   './sound/failure.wav',
-  './sound/SoundofUsingItems.wav'
+  './sound/SoundofUsingItems.wav',
+  './sound/bomb.wav'
 ];
 
 const CDN_HOSTS = [

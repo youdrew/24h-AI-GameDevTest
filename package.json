@@ -1,0 +1,26 @@
+{
+  "name": "24h-ai-gamedevtest",
+  "version": "1.0.0",
+  "description": "浏览器三消解谜游戏。点击瓦片送入底部 7 格收集槽，3 个相同自动消除，清空版面获胜。",
+  "main": "sw.js",
+  "directories": {
+    "doc": "doc"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/youdrew/24h-AI-GameDevTest.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/youdrew/24h-AI-GameDevTest/issues"
+  },
+  "homepage": "https://github.com/youdrew/24h-AI-GameDevTest#readme",
+  "devDependencies": {
+    "puppeteer": "^24.42.0"
+  }
+}
