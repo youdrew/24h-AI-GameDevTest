@@ -1,0 +1,36 @@
+/* Tile Explorer — responsive tweaks */
+
+@media (max-width: 480px) {
+  .panel-card {
+    padding: 18px;
+  }
+
+  .title {
+    font-size: 26px;
+  }
+
+  .stars-row {
+    font-size: 38px;
+  }
+
+  .reward-btn {
+    font-size: 20px;
+    padding: 10px 2px;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 540px) {
+  .panel-card {
+    padding: 14px 18px;
+    gap: 8px;
+  }
+
+  .title {
+    font-size: 22px;
+  }
+
+  .stars-row {
+    font-size: 28px;
+    padding: 4px 0;
+  }
+}

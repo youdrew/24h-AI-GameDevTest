@@ -1,0 +1,26 @@
+{
+  "name": "Tile Explorer",
+  "short_name": "Tile Explorer",
+  "description": "三消解谜游戏 · 打开即玩 · 无广告",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0d1018",
+  "theme_color": "#1a1f2e",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='32' fill='%231a1f2e'/><text y='132' x='96' text-anchor='middle' font-size='120'>%F0%9F%A7%A9</text></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='80' fill='%231a1f2e'/><text y='360' x='256' text-anchor='middle' font-size='320'>%F0%9F%A7%A9</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

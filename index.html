@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#1a1f2e" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Tile Explorer</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%231a1f2e'/%3E%3Ctext y='44' x='32' text-anchor='middle' font-size='40'%3E%F0%9F%A7%A9%3C/text%3E%3C/svg%3E" />
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%231a1f2e'/%3E%3Ctext y='44' x='32' text-anchor='middle' font-size='40'%3E%F0%9F%A7%A9%3C/text%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/ui.css" />
+  <link rel="stylesheet" href="css/responsive.css" />
+
+  <!-- PixiJS v7.3.2 (locked) via CDN with cdnjs fallback -->
+  <script src="https://cdn.jsdelivr.net/npm/pixi.js@7.3.2/dist/pixi.min.js" crossorigin="anonymous"></script>
+  <script>
+    if (typeof PIXI === 'undefined') {
+      document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"><\/script>');
+    }
+  </script>
+</head>
+<body>
+  <div id="app">
+    <!-- PixiJS canvas mounts here -->
+    <div id="game-canvas"></div>
+
+    <!-- DOM overlay panels (hidden by default; toggled by ui.js) -->
+    <div id="dom-overlay">
+      <!-- Main menu -->
+      <div id="panel-menu" class="panel panel-center hidden" data-panel="menu">
+        <div class="panel-card">
+          <h1 class="title">Tile Explorer</h1>
+          <p class="subtitle">三消解谜 · 打开即玩</p>
+          <button class="btn btn-primary" data-action="start">开始游戏</button>
+          <button class="btn" data-action="open-leaderboard">排行榜</button>
+          <button class="btn" data-action="open-settings">设置</button>
+          <p class="hint" id="menu-progress"></p>
+        </div>
+      </div>
+
+      <!-- Settings -->
+      <div id="panel-settings" class="panel panel-center hidden" data-panel="settings">
+        <div class="panel-card">
+          <h2>设置</h2>
+          <label class="toggle">
+            <span>音效</span>
+            <input type="checkbox" id="toggle-sound" />
+            <span class="slider"></span>
+          </label>
+          <label class="toggle">
+            <span>背景音乐</span>
+            <input type="checkbox" id="toggle-music" />
+            <span class="slider"></span>
+          </label>
+          <div class="field">
+            <label for="input-name">显示名称</label>
+            <input id="input-name" type="text" maxlength="12" placeholder="Player#XXXX" />
+            <p class="hint">1–12 个字符 · 字母/数字/中文/_-空格</p>
+          </div>
+          <button class="btn" data-action="close-panel">关闭</button>
+        </div>
+      </div>
+
+      <!-- Leaderboard -->
+      <div id="panel-leaderboard" class="panel panel-center hidden" data-panel="leaderboard">
+        <div class="panel-card">
+          <h2>排行榜</h2>
+          <div class="tabs">
+            <button class="tab active" data-tab="global">全球榜</button>
+            <button class="tab" data-tab="level">本关榜</button>
+          </div>
+          <div id="leaderboard-list" class="lb-list">
+            <p class="hint">载入中…</p>
+          </div>
+          <button class="btn" data-action="close-panel">关闭</button>
+        </div>
+      </div>
+
+      <!-- Pause -->
+      <div id="panel-pause" class="panel panel-center hidden" data-panel="pause">
+        <div class="panel-card">
+          <h2>已暂停</h2>
+          <button class="btn btn-primary" data-action="resume">继续</button>
+          <button class="btn" data-action="restart">重新开始</button>
+          <button class="btn" data-action="quit-to-menu">返回主菜单</button>
+        </div>
+      </div>
+
+      <!-- Level complete -->
+      <div id="panel-complete" class="panel panel-center hidden" data-panel="complete">
+        <div class="panel-card">
+          <h2 id="complete-title">关卡通关！</h2>
+          <div id="complete-stars" class="stars-row">★★★</div>
+          <p id="complete-stats" class="stats"></p>
+          <p id="complete-rank" class="hint">提交排行榜中…</p>
+          <p class="hint">选择一个道具作为奖励：</p>
+          <div id="reward-grid" class="reward-grid"></div>
+          <button class="btn btn-primary hidden" data-action="next-level" id="btn-next-level">下一关</button>
+        </div>
+      </div>
+
+      <!-- Game over -->
+      <div id="panel-gameover" class="panel panel-center hidden" data-panel="gameover">
+        <div class="panel-card">
+          <h2>关卡失败</h2>
+          <p class="hint">槽位栏满了。再试一次！</p>
+          <button class="btn btn-primary" data-action="restart">重新开始</button>
+          <button class="btn" data-action="quit-to-menu">返回主菜单</button>
+        </div>
+      </div>
+
+      <!-- Top-right HUD button (pause / settings) -->
+      <button id="btn-pause" class="hud-btn hidden" aria-label="暂停">⏸</button>
+
+      <!-- Tutorial bubble (non-modal) -->
+      <div id="tutorial-bubble" class="tutorial-bubble hidden">
+        <p id="tutorial-text"></p>
+      </div>
+
+      <!-- Toast (transient hint, e.g. "已保存") -->
+      <div id="toast" class="toast hidden"></div>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
