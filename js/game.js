@@ -36,6 +36,7 @@ export class Game {
     this.comboTimer = 0;                 // ms remaining
     this.comboMeter = 0;
     this.chainPattern = null;            // active combo-chain patternId (null = no chain)
+    this.chainCount = 0;                 // consecutive same-pattern clicks in current chain
     this.optimalSteps = null;
     this.tilePopHistory = [];            // for undo, stack of { sourceTileId, slotIndex }
     this.matchClearsThisRound = 0;       // for falling-queue trigger
@@ -234,6 +235,7 @@ export class Game {
     this.comboTimer = 0;
     this.comboMeter = 0;
     this.chainPattern = null;
+    this.chainCount = 0;
     this.tilePopHistory = [];
     this.matchClearsThisRound = 0;
     this.activePowerupMode = null;
@@ -346,10 +348,18 @@ export class Game {
     // Combo chain rule: a chain is a continuous run of clicks on the SAME
     // patternId. Selecting a different pattern breaks the chain (combo + meter
     // reset to 0); the new click starts a fresh chain on its own pattern.
+    // chainCount tracks the run length — a triple-match only earns a combo
+    // when chainCount >= 3 at the moment the match resolves (i.e. the matched
+    // triple was actually built by the current uninterrupted chain).
     if (this.chainPattern !== null && tile.patternId !== this.chainPattern) {
       this._resetCombo();
     }
-    this.chainPattern = tile.patternId;
+    if (this.chainPattern === tile.patternId) {
+      this.chainCount += 1;
+    } else {
+      this.chainPattern = tile.patternId;
+      this.chainCount = 1;
+    }
 
     audio.unlock();
     audio.tap();
@@ -379,11 +389,9 @@ export class Game {
 
   // After a tile lands: detect match, handle combo, drop queue, win/loss
   async _processSlotMatchesAndChecks(playerInitiated) {
-    let any = false;
     while (true) {
       const m = this.slot.detectAndPopMatch();
       if (!m) break;
-      any = true;
       // animate clear
       for (const sp of m.removedSprites) {
         if (sp) {
@@ -402,10 +410,11 @@ export class Game {
         anim.burst(world.x, world.y, 0xfde68a, 14, 5);
       }
 
-      if (playerInitiated) {
+      if (playerInitiated && this.chainCount >= 3) {
+        // Chain produced its own triple → combo + meter both step by 1.
         this.combo++;
         this.comboTimer = CONFIG.COMBO_WINDOW_MS;
-        this.comboMeter = Math.min(CONFIG.COMBO_METER_MAX, this.comboMeter + 2);
+        this.comboMeter = Math.min(CONFIG.COMBO_METER_MAX, this.comboMeter + 1);
         this._showComboLabel();
         audio.match(this.combo);
         this._vibrate(CONFIG.VIBE_MATCH);
@@ -413,16 +422,13 @@ export class Game {
           this._triggerLightning();
         }
       } else {
-        // Falling-queue–driven match: no combo accumulation
+        // Match happened but not from a clean ≥3 chain (or it's a falling
+        // -queue match): play the plain pop sound, no combo or meter gain.
         audio.match(0);
       }
       this.matchClearsThisRound++;
     }
 
-    if (!any && playerInitiated) {
-      // Click did not lead to match -> still bumps meter slightly
-      this.comboMeter = Math.min(CONFIG.COMBO_METER_MAX, this.comboMeter + 1);
-    }
     this._renderComboMeter();
 
     this.board.refreshCoverage();
@@ -472,10 +478,11 @@ export class Game {
   }
 
   _resetCombo() {
-    if (this.combo === 0 && this.comboMeter === 0 && this.chainPattern === null) return;
+    if (this.combo === 0 && this.comboMeter === 0 && this.chainPattern === null && this.chainCount === 0) return;
     this.combo = 0;
     this.comboTimer = 0;
     this.chainPattern = null;
+    this.chainCount = 0;
     // Spec: "断连时蓄力条清空" — chain break empties the meter completely.
     // (Lightning charge at full is also lost on chain break, by design.)
     this.comboMeter = 0;

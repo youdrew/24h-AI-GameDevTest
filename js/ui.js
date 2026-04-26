@@ -24,6 +24,8 @@ class UI {
     this.completeData = null;
     this.selectedReward = null;
     this.activeLeaderboardTab = 'global';
+    this.devMode = false;
+    this._devTapTimes = [];
   }
 
   init({ game, onSetMusic, onSetSfx }) {
@@ -37,6 +39,7 @@ class UI {
     this._bindGameover();
     this._bindHud();
     this._bindTutorial();
+    this._bindDevGesture();
     this._bindGlobalActions();
     this._refreshSettings();
   }
@@ -52,10 +55,13 @@ class UI {
         case 'open-leaderboard': this._handleOpenLeaderboard(); break;
         case 'open-settings': this._showPanel('panel-settings'); break;
         case 'close-panel': this._closeCurrentPanel(); break;
+        case 'back-to-menu': this._handleBackToMenu(); break;
         case 'resume': this._handleResume(); break;
         case 'restart': this._handleRestart(); break;
         case 'quit-to-menu': this._handleQuitMenu(); break;
         case 'next-level': this._handleNextLevel(); break;
+        case 'open-dev-jump': this._handleOpenDevJump(); break;
+        case 'dev-jump-go': this._handleDevJumpGo(); break;
       }
     });
   }
@@ -165,12 +171,64 @@ class UI {
     bubble.addEventListener('click', () => bubble.classList.add('hidden'));
   }
 
+  // 7 quick taps on the menu title within 3s toggles dev mode (session only —
+  // never persisted, so production users can't trip into it accidentally).
+  _bindDevGesture() {
+    const title = this._$('menu-title');
+    if (!title) return;
+    title.addEventListener('click', () => {
+      const now = Date.now();
+      this._devTapTimes = this._devTapTimes.filter((t) => now - t < 3000);
+      this._devTapTimes.push(now);
+      if (this._devTapTimes.length >= 7) {
+        this._devTapTimes = [];
+        this._toggleDevMode();
+      }
+    });
+  }
+
+  _toggleDevMode() {
+    this.devMode = !this.devMode;
+    const btn = this._$('btn-dev-jump');
+    if (btn) btn.classList.toggle('hidden', !this.devMode);
+    this.toast(this.devMode ? '🛠️ 开发者模式已开启' : '开发者模式已关闭');
+  }
+
+  _handleBackToMenu() {
+    this._closeCurrentPanel();
+    this.showMenu();
+  }
+
+  _handleOpenDevJump() {
+    if (!this.devMode) return;
+    const input = this._$('input-dev-level');
+    if (input) input.value = String(this.game.level || storage.state.currentLevel || 1);
+    this._showPanel('panel-dev-jump');
+    setTimeout(() => input?.focus(), 0);
+  }
+
+  _handleDevJumpGo() {
+    if (!this.devMode) return;
+    const input = this._$('input-dev-level');
+    const n = Math.floor(Number(input?.value));
+    if (!Number.isFinite(n) || n < 1 || n > 10000) {
+      this.toast('请输入 1 – 10000');
+      return;
+    }
+    storage.setLevel(n);
+    this._closeCurrentPanel();
+    this._$('btn-pause').classList.remove('hidden');
+    this.game.startLevel(n);
+  }
+
   // ---- Public flow methods --------------------------------------------------
 
   showMenu() {
     this._refreshMenuProgress();
     this._showPanel('panel-menu');
     this._$('btn-pause').classList.add('hidden');
+    const devBtn = this._$('btn-dev-jump');
+    if (devBtn) devBtn.classList.toggle('hidden', !this.devMode);
   }
 
   _handleStart() {

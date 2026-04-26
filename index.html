@@ -32,11 +32,12 @@
       <!-- Main menu -->
       <div id="panel-menu" class="panel panel-center hidden" data-panel="menu">
         <div class="panel-card">
-          <h1 class="title">Tile Explorer</h1>
+          <h1 class="title" id="menu-title">Tile Explorer</h1>
           <p class="subtitle">三消解谜 · 打开即玩</p>
           <button class="btn btn-primary" data-action="start">开始游戏</button>
           <button class="btn" data-action="open-leaderboard">排行榜</button>
           <button class="btn" data-action="open-settings">设置</button>
+          <button class="btn hidden" data-action="open-dev-jump" id="btn-dev-jump">🛠️ 跳转关卡</button>
           <p class="hint" id="menu-progress"></p>
         </div>
       </div>
@@ -60,7 +61,7 @@
             <input id="input-name" type="text" maxlength="12" placeholder="Player#XXXX" />
             <p class="hint">1–12 个字符 · 字母/数字/中文/_-空格</p>
           </div>
-          <button class="btn" data-action="close-panel">关闭</button>
+          <button class="btn" data-action="back-to-menu">返回</button>
         </div>
       </div>
 
@@ -75,7 +76,20 @@
           <div id="leaderboard-list" class="lb-list">
             <p class="hint">载入中…</p>
           </div>
-          <button class="btn" data-action="close-panel">关闭</button>
+          <button class="btn" data-action="back-to-menu">返回</button>
+        </div>
+      </div>
+
+      <!-- Dev: jump to level (hidden unless dev mode is unlocked) -->
+      <div id="panel-dev-jump" class="panel panel-center hidden" data-panel="dev-jump">
+        <div class="panel-card">
+          <h2>🛠️ 开发者 · 跳转关卡</h2>
+          <p class="hint">输入目标关卡（1 – 10000）</p>
+          <div class="field">
+            <input id="input-dev-level" type="number" min="1" max="10000" inputmode="numeric" placeholder="例如 42" />
+          </div>
+          <button class="btn btn-primary" data-action="dev-jump-go">前往</button>
+          <button class="btn" data-action="back-to-menu">返回</button>
         </div>
       </div>
 
