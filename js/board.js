@@ -345,7 +345,13 @@ export class Board {
           }
         }
       }
-      if (!chosen) break; // no space; skip remainder
+      if (!chosen) {
+        // Top layer is full. The shifted tile would otherwise be silently
+        // dropped — push it back to the queue head so the next dropFromQueue()
+        // (or the end-of-level dump) sees it.
+        this.layout.fallingQueue.unshift(patternId);
+        break;
+      }
 
       const newId = this._nextDropId++;
       const tileData = { id: newId, patternId, layer: topLayer, gridX: chosen.gx, gridY: chosen.gy };

@@ -252,15 +252,25 @@ export function generateLayout(N, attempt = 0) {
     layerCells[0].push(free);
   }
 
-  // 6. Falling queue (level 51+) — unchanged
+  // 6. Falling queue (level 51+) — built as triples (groups of 3 same-pattern
+  //    tiles). The order of groups is shuffled but each group is contiguous,
+  //    so any prefix of the queue ends on a triple boundary. This invariant
+  //    matters for the end-of-level "force drain" path (game._processSlot…):
+  //    when the board empties with the queue non-empty, we dump the residue
+  //    onto the board and the player must play it through. With contiguous
+  //    triples, the residue is always clearable; with random ordering the
+  //    residue could leave 1–2 lone tiles of some pattern (5 in queue, 5 dropped,
+  //    3 cleared, 2 stranded with no partner anywhere) and brick the level.
   const fallingQueue = [];
   if (N >= 51) {
-    const queuePool = [];
+    const groups = [];                   // each group = [p, p, p]
     for (let p = 0; p < params.patternTypes; p++) {
-      for (let k = 0; k < params.setsPerType * 3; k++) queuePool.push(p);
+      for (let k = 0; k < params.setsPerType; k++) {
+        groups.push([p, p, p]);
+      }
     }
-    shuffleInPlace(queuePool, rand);
-    fallingQueue.push(...queuePool);
+    shuffleInPlace(groups, rand);
+    for (const g of groups) fallingQueue.push(...g);
   }
 
   return {

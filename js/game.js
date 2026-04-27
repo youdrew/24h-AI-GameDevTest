@@ -526,8 +526,25 @@ export class Game {
       }
     }
 
-    // Check win
+    // Check win — but on falling-queue levels we first force-drain the queue.
+    // The queue is built as contiguous triples (see level.js), so any non-zero
+    // residue is a multiple of 3 per pattern and the player can finish it.
     if (this.board.isEmpty()) {
+      const queue = this.board.layout?.fallingQueue;
+      if (this.level >= 51 && queue && queue.length > 0) {
+        const before = queue.length;
+        const dropped = await this.board.dropFromQueue(before);
+        audio.drop();
+        const remaining = queue.length;
+        if (this.onShowToast && dropped > 0) {
+          this.onShowToast(remaining > 0
+            ? `队列倾倒 · 还剩 ${remaining} 块`
+            : '最后一波！');
+        }
+        this.matchClearsThisRound = 0;
+        this.board.refreshCoverage();
+        return;
+      }
       this._handleLevelComplete();
       return;
     }
@@ -642,7 +659,7 @@ export class Game {
       }
     } else if (id === 'freeze') {
       this.activePowerupMode = (this.activePowerupMode === 'freeze' ? null : 'freeze');
-      if (this.onShowToast && this.activePowerupMode) this.onShowToast('点击一个瓦片冰冻 3 次下落');
+      if (this.onShowToast && this.activePowerupMode) this.onShowToast('点击一个瓦片冰冻 3 波下落');
     }
     this._refreshPowerupCounts();
   }
@@ -698,57 +715,23 @@ export class Game {
     this.usedHardPowerup = true;
     audio.bomb();
     const patternId = tile.patternId;
-    // Spec invariant: total removed must be a multiple of 3. Compute combined
-    // count first; only consume floor(total/3)*3 across board+tray.
-    const boardCount = this.board.countRemainingByPattern(patternId);
-    const trayCount = this.slot.patternCounts().get(patternId) || 0;
-    const total = boardCount + trayCount;
-    let toRemove = Math.floor(total / 3) * 3;
-    // Greedy: remove from board first (visible impact), then tray
-    const removeFromBoard = Math.min(boardCount, toRemove);
-    const removeFromTray = toRemove - removeFromBoard;
 
-    if (removeFromBoard >= boardCount) {
-      const removed = this.board.removePattern(patternId);
-      for (const t of removed) {
-        const sp = this.board.getSprite(t.id);
-        if (sp) {
-          const world = sp.getGlobalPosition();
-          anim.burst(world.x, world.y, 0xf87171, 12, 5);
-        }
-      }
-    } else {
-      // Partial board removal — only first N tiles
-      let count = 0;
-      for (const sprite of this.board.tilesById.values()) {
-        if (count >= removeFromBoard) break;
-        const t = sprite.tileData;
-        if (!t.removed && t.patternId === patternId) {
-          const world = sprite.getGlobalPosition();
-          this.board.removeTile(t.id);
-          anim.burst(world.x, world.y, 0xf87171, 12, 5);
-          count++;
-        }
+    // Spec ("移除版面 + 槽位中所有同图案瓦片") = full clear of the chosen
+    // pattern, both on the board AND in the slot. We used to keep a
+    // mod-3 invariant on total removed, but that could leave orphan tiles
+    // (board has 4 → remove 3 → 1 stranded with no pair) and turn the
+    // level unsolvable on N<51 where falling-queue refills don't exist.
+    const removed = this.board.removePattern(patternId);
+    for (const t of removed) {
+      const sp = this.board.getSprite(t.id);
+      if (sp) {
+        const world = sp.getGlobalPosition();
+        anim.burst(world.x, world.y, 0xf87171, 12, 5);
       }
     }
-
-    if (removeFromTray > 0) {
-      // Pop pattern from slot, but only `removeFromTray` of them
-      const slotPopped = [];
-      let remaining = removeFromTray;
-      for (const c of this.slot.cells) {
-        if (remaining <= 0) break;
-        if (c.patternId === patternId) {
-          slotPopped.push({ sprite: c.sprite });
-          c.sprite = null; c.patternId = null; c.sourceTileId = null;
-          remaining--;
-        }
-      }
-      this.slot._compact();
-      this.slot._updateWarningTint();
-      for (const it of slotPopped) {
-        if (it.sprite) it.sprite.destroy({ children: true });
-      }
+    const slotPopped = this.slot.popPattern(patternId);
+    for (const it of slotPopped) {
+      if (it.sprite) it.sprite.destroy({ children: true });
     }
 
     anim.flash(this.effectLayer, 0xf87171, 0.4, 0.25);
@@ -768,7 +751,7 @@ export class Game {
     this.usedHardPowerup = true;
     audio.freeze();
     this.board.freezeTile(tile.id, 3);
-    if (this.onShowToast) this.onShowToast('已冰冻 3 次下落');
+    if (this.onShowToast) this.onShowToast('已冰冻 3 波下落');
   }
 
   // ---- Win / Lose -----------------------------------------------------------

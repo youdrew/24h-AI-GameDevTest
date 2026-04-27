@@ -66,7 +66,7 @@ export const POWERUPS = {
   hint:     { id: 'hint',     icon: '💡', label: '提示',   unlock: 1,  cap: 9, breaks3Star: false, desc: '高亮一组可消除的同图案瓦片' },
   bomb:     { id: 'bomb',     icon: '💣', label: '炸弹',   unlock: 10, cap: 5, breaks3Star: true,  desc: '点选一种图案，移除版面 + 槽位中所有同图案瓦片' },
   trashOut: { id: 'trashOut', icon: '🗑️', label: '扔垃圾', unlock: 5,  cap: 5, breaks3Star: true,  desc: '清空选中栏，所有瓦片随机扔回版面' },
-  freeze:   { id: 'freeze',   icon: '❄️', label: '冰冻',   unlock: 51, cap: 3, breaks3Star: true,  desc: '冰冻一块瓦片，下落 3 次内不会被压住' }
+  freeze:   { id: 'freeze',   icon: '❄️', label: '冰冻',   unlock: 51, cap: 3, breaks3Star: true,  desc: '冰冻一块瓦片，接下来 3 波下落都不会被压住' }
 };
 
 export const POWERUP_ORDER = ['shuffle', 'undo', 'hint', 'bomb', 'trashOut', 'freeze'];
