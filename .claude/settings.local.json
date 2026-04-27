@@ -42,7 +42,8 @@
       "Read(//tmp/**)",
       "Bash(python3 -m http.server 8765 --directory \"D:/UGit/24h-AI-GameDevTest\")",
       "Bash(echo \"PID: $!\")",
-      "Bash('[data-action=\\\\\"start\\\\\"]')"
+      "Bash('[data-action=\\\\\"start\\\\\"]')",
+      "Bash(xxd \"D:\\\\UGit\\\\24h-AI-GameDevTest\\\\doc\\\\prompt\\\\PROMPT_01.md\")"
     ]
   }
 }
