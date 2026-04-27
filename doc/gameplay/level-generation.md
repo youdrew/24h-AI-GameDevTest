@@ -4,16 +4,14 @@
 
 ### 第一步：确定参数
 
-从难度公式获取该关卡的参数（见 `discussion/difficulty-formula.md`）：
+从难度关键帧表获取该关卡的参数（见 `discussion/difficulty-formula.md`）：
 
 ```
-// 教程关卡固定参数（N ≤ 9）
-if (N <= 9):
-    patternTypes = 3, setsPerType = 1, layers = 1
-else:
-    patternTypes = smoothParam(N, 10) + 3
-    setsPerType  = smoothParam(N, 35) + 1
-    layers       = smoothParam(N, 25) + 1
+// 从 js/difficulty.js 关键帧表中查找 level ≤ N 的最大关键帧
+keyframe = DIFFICULTY_KEYFRAMES.findLast(kf => kf.level <= N)
+patternTypes = keyframe.patternTypes
+setsPerType  = keyframe.setsPerType
+layers       = keyframe.layers
 
 tileCount = patternTypes × setsPerType × 3
 ```
@@ -30,17 +28,16 @@ for i in range(patternTypes):
 // patterns.length === tileCount ✓
 ```
 
-### 第三步：逆向生成布局
+### 第三步：金字塔布局生成
 
-使用确定性种子 `seed = N`，保证同一关卡在所有设备上生成相同布局。
+使用确定性种子 `seed = N`（mulberry32 PRNG），保证同一关卡在所有设备上生成相同布局。
 
 1. 选择版面网格大小（根据 tileCount 计算，确保有足够空间放置所有瓦片）
-2. 将 `tileCount` 个瓦片随机分配到 `layers` 层的网格位置
-3. 使用逆向放置策略：
-   - 从空版面开始
-   - 按逆序放置瓦片（先放最后一层的，再放上一层的）
-   - 确保每个阶段被覆盖的瓦片都在之前已经被"使用"
-   - 即正向游戏时，玩家可以按某种顺序逐层解锁
+2. 将 `tileCount` 个瓦片按**金字塔策略**分配到 `layers` 层：
+   - 底层（layer 0）瓦片最多，高层瓦片较少
+   - 每一层严格是下一层的子集（上层瓦片只出现在下层已有瓦片的正上方附近）
+   - 确保正向游戏时，玩家可以从底层开始逐层解锁
+3. 计算覆盖关系：基于瓦片像素重叠（48px 瓦片 + 4px 间距），精确判断哪些瓦片被上层覆盖
 
 ### 第四步：求解器验证
 
@@ -78,9 +75,9 @@ function solve(board, slot):
 ```
 
 **验证策略**：
-- 简单关卡（≤18 瓦片）：求解器在 < 10ms 内完成
-- 中等关卡（19-54 瓦片）：设置 500ms 超时
-- 困难关卡（55+ 瓦片）：设置 2s 超时
+- 小型关卡（tileCount ≤ 30）：200ms 超时
+- 中型关卡（tileCount ≤ 120）：800ms 超时
+- 大型关卡（tileCount > 120）：2500ms 超时
 - 所有求解在 **Web Worker** 中执行，不阻塞主线程动画和交互
 - 超时或失败 → seed 偏移重试（seed = N × 1000 + attemptCount），最多重试 20 次
 - 20 次仍失败 → 使用回退策略：以逆向生成布局直接作为关卡（不经过求解器验证），向玩家展示警告"此关卡为算法生成，可能无解"

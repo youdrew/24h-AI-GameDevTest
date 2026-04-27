@@ -126,17 +126,19 @@ Tile Container
 | 文件                | 职责                                                   |
 |---------------------|--------------------------------------------------------|
 | `js/main.js`        | 创建 PIXI.Application、初始化各模块、游戏主循环入口     |
-| `js/game.js`        | 游戏状态机（menu/playing/paused/gameover）、状态转换     |
-| `js/board.js`       | 版面容器管理、瓦片创建/销毁、覆盖关系计算、缩放控制     |
-| `js/level.js`       | 关卡参数公式、逆向生成算法                               |
+| `js/game.js`        | 游戏状态机（menu/playing/paused/complete/gameover）、连击系统、星级评分、道具逻辑 |
+| `js/board.js`       | 版面容器管理、瓦片创建/销毁、覆盖关系计算、道具效果（洗牌/提示/扔垃圾/冰冻） |
+| `js/level.js`       | 关卡参数读取（从关键帧表）、金字塔布局生成、覆盖关系计算、下落队列 |
+| `js/difficulty.js`  | 难度关键帧表（18 条）、插值策略配置                     |
+| `js/config.js`      | 运行时配置（Supabase、游戏参数、道具定义、主题定义、图案库） |
 | `js/solver.js`      | 回溯求解器（Web Worker 运行）、最优步数计算、超时重试   |
-| `js/slot.js`        | 槽位栏容器、瓦片飞入动画、三消检测触发                  |
+| `js/slot.js`        | 槽位栏容器、智能插入（同图案聚集）、飞入动画            |
 | `js/matcher.js`     | 三消匹配检测逻辑                                       |
 | `js/animation.js`   | Ticker 动画队列、粒子池、特效播放                       |
-| `js/audio.js`       | Web Audio API 音效合成 + BGM 播放控制                   |
-| `js/storage.js`     | localStorage 读写、数据迁移、关卡求解缓存               |
+| `js/audio.js`       | Web Audio API 音效合成 + 主题 BGM 切换 + Ducking       |
+| `js/storage.js`     | localStorage 读写、数据迁移、离线提交队列               |
 | `js/leaderboard.js` | Supabase REST API 通信（fetch）、提交/查询              |
-| `js/ui.js`          | DOM UI 管理（排行榜面板、设置、菜单显示/隐藏）          |
+| `js/ui.js`          | DOM UI 管理（排行榜面板、设置、奖励选择、教程气泡）     |
 
 ## 资源加载
 

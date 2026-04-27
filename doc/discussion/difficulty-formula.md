@@ -1,7 +1,7 @@
 # 难度量化方案
 
 > 讨论日期：2026/04/26
-> 状态：已确认（v2 — 修复数学一致性）
+> 状态：已确认（v3 — 关键帧查表 + 金字塔布局）
 
 ---
 
@@ -9,7 +9,7 @@
 
 用参数化公式替代离散难度等级，使难度曲线平滑、可预测、可验证。
 
-## 核心公式
+## 核心参数
 
 ```
 level N 的难度由以下参数决定：
@@ -19,43 +19,40 @@ level N 的难度由以下参数决定：
 - layers(N)       — 堆叠层数
 ```
 
-### 公式定义
+## 难度关键帧表
 
-使用平滑插值替代 `floor` 阶梯函数，消除难度跳变：
+难度由 `js/difficulty.js` 中的 18 条关键帧定义。在两条关键帧之间的关卡使用前一条关键帧的值（`stepped` 插值策略）。
 
+```javascript
+export const DIFFICULTY_KEYFRAMES = [
+  // level | patternTypes | setsPerType | layers | tile count (= pt × spt × 3)
+  { level:   1, patternTypes:  3, setsPerType: 1, layers: 2 }, //   9
+  { level:   2, patternTypes:  4, setsPerType: 1, layers: 2 }, //  12
+  { level:   3, patternTypes:  5, setsPerType: 1, layers: 2 }, //  15
+  { level:   4, patternTypes:  6, setsPerType: 1, layers: 2 }, //  18
+  { level:   5, patternTypes:  6, setsPerType: 1, layers: 3 }, //  18  (depth +1)
+  { level:   7, patternTypes:  7, setsPerType: 2, layers: 3 }, //  42
+  { level:  10, patternTypes:  8, setsPerType: 2, layers: 3 }, //  48
+  { level:  15, patternTypes: 10, setsPerType: 2, layers: 4 }, //  60
+  { level:  20, patternTypes: 12, setsPerType: 2, layers: 4 }, //  72
+  { level:  25, patternTypes: 14, setsPerType: 3, layers: 4 }, // 126
+  { level:  30, patternTypes: 15, setsPerType: 3, layers: 5 }, // 135
+  { level:  40, patternTypes: 18, setsPerType: 3, layers: 5 }, // 162
+  { level:  50, patternTypes: 20, setsPerType: 3, layers: 6 }, // 180
+  { level:  70, patternTypes: 23, setsPerType: 3, layers: 6 }, // 207
+  { level: 100, patternTypes: 26, setsPerType: 4, layers: 7 }, // 312
+  { level: 150, patternTypes: 28, setsPerType: 4, layers: 7 }, // 336
+  { level: 200, patternTypes: 28, setsPerType: 5, layers: 8 }, // 420
+  { level: 300, patternTypes: 28, setsPerType: 6, layers: 8 }  // 504
+];
 ```
-// 平滑插值函数：每 period 关卡增长 1，但过渡更平滑
-// 在整数点上值与 round(N/period) 相同，中间值平滑过渡
-smoothStep(N, period) = floor(N / period) + smoothFrac(N, period)
 
-// 小数部分的平滑映射（ease-in-out）
-smoothFrac(N, period) = easeInOut( (N % period) / period )
+**安全上限**（定义在 `js/level.js` 中）：
+- `patternTypes ≤ PT_CAP`（= 28；每个主题 emoji 库有 32 个）
+- `setsPerType ≤ SPT_CAP`（= 6）
+- `layers ≤ LAYER_CAP`（= 8）
 
-// ease-in-out 曲线：避免 0→1 的突变
-easeInOut(t) = t * t * (3 - 2 * t)
-
-// 最终公式（教程覆盖 + 平滑插值）
-if (N <= 9):
-    patternTypes = 3, setsPerType = 1, layers = 1   // 教程关卡固定参数
-else:
-    patternTypes(N) = smoothParam(N, 10) + 3
-    setsPerType(N)  = smoothParam(N, 35) + 1
-    layers(N)       = smoothParam(N, 25) + 1
-
-tileCount(N) = patternTypes(N) × setsPerType(N) × 3
-```
-
-**与旧公式的关系**：在 N 是 period 整数倍时（N=10,20,30...），新公式与旧 `floor` 公式产生完全相同的结果。区别在于过渡区间——旧公式在整数倍处突然跳变，新公式在接近整数倍时提前渐进增长。
-
-> **实现简化**：`smoothStep` 在代码中可用以下等价实现——
-> ```
-> function smoothParam(N, period) {
->     const base = Math.floor(N / period);
->     const frac = (N % period) / period;
->     const smoothed = frac * frac * (3 - 2 * frac); // easeInOut
->     return Math.round(base + smoothed);
-> }
-> ```
+**插值策略**：`stepped`（默认）——关卡 N 使用 level ≤ N 的最大关键帧的值。可配置为 `linear` 进行线性插值。
 
 ### 数学一致性保证
 
@@ -66,47 +63,33 @@ tileCount(N) = patternTypes(N) × setsPerType(N) × 3
 3. 不存在无法消除的"剩余瓦片"
 4. 每个生成的关卡在数学上都有至少一种完美消除路径
 
-### v1 公式问题（已修复）
+### 与 v1/v2 的关系
 
-v1 版本中 tileCount 和 patternTypes 是独立公式，会产生无法分配的组合：
-
-```
-// 旧公式（有 bug）
-tileCount(10)    = 9 + floor(10/5)*3 = 15
-patternTypes(10) = 3 + floor(10/10)  = 4
-// 15 ÷ 4 = 3.75 → 无法平均分配成 3 的倍数！
-```
-
-v2 通过推导关系彻底消除了此问题。
+- **v1**：tileCount 和 patternTypes 是独立公式，会产生无法分配的组合（如 15÷4=3.75）
+- **v2**：引入 `smoothParam` 平滑插值函数，修复数学不一致性
+- **v3（当前）**：用关键帧查表替代 `smoothParam` 公式，提供更精细的手动调优控制。每个关键帧可直接编辑 `js/difficulty.js` 调整，无需修改游戏逻辑
 
 ### 示例
 
-> 新公式使用平滑插值，关键变化标记为 **粗体**（与旧 floor 公式不同的关卡）。
-
-| 关卡 | 图案类型 | 每种组数 | 总瓦片数 | 层数 | 总匹配次数 | 说明 |
-|------|----------|----------|----------|------|-----------|------|
-| 1    | 3        | 1        | 9        | 1    | 3         | 教程：固定参数 |
-| 5    | 3        | 1        | 9        | 1    | 3         | 教程：固定参数 |
-| 9    | 3        | 1        | 9        | 1    | 3         | 教程：最后一关 |
-| 10   | 4        | 1        | 12       | 1    | 4         | 平滑公式生效 |
-| 17   | **5**    | 1        | **15**   | 1    | **5**     | 平滑过渡 |
-| 20   | 5        | 1        | 15       | 1    | 5         | 5 种图案 |
-| 23   | 5        | 1        | 15       | **2** | 5        | 平滑过渡到 2 层 |
-| 25   | 5        | 1        | 15       | 2    | 5         | 引入多层堆叠（稳定） |
-| 28   | **6**    | 1        | **18**   | 2    | **6**     | 平滑过渡 |
-| 30   | 6        | 1        | 18       | 2    | 6         | 6 种图案 |
-| 33   | **7**    | **2**    | **42**   | 2    | **14**    | patternTypes 和 setsPerType 同时过渡 |
-| 35   | 7        | 2        | 42       | 2    | 14        | 稳定（注意：不再从 18 跳到 36） |
-| 40   | **8**    | 2        | **48**   | 2    | **16**    | 平滑过渡 |
-| 50   | **9**    | 2        | **54**   | **3** | **18**   | 多参数同时平滑过渡 |
-| 60   | **10**   | 2        | **60**   | 3    | **20**    | 平滑过渡 |
-| 70   | **11**   | **3**    | **99**   | 3    | **33**    | setsPerType 平滑过渡 |
-| 75   | 11       | 3        | 99       | **4** | 33       | 层数平滑过渡 |
-| 80   | **12**   | 3        | **108**  | 4    | **36**    | 高难度 |
-| 90   | **13**   | 3        | **117**  | 4    | **39**    | 13 种图案 |
-| 100  | **14**   | **4**    | **168**  | **5** | **56**   | 极限 |
-
-> **关键改善**：关卡 35 的总瓦片数从旧公式的 36（从 18 突然翻倍）变为新公式的渐进过渡——33 关时 patternTypes 已升至 7，35 关时稳定在 7×2=42，消除了 2x 跳变。
+| 关卡 | 图案类型 | 每种组数 | 总瓦片数 | 层数 | 说明 |
+|------|----------|----------|----------|------|------|
+| 1    | 3        | 1        | 9        | 2    | 入门，3 种图案 |
+| 2    | 4        | 1        | 12       | 2    | 增加图案 |
+| 3    | 5        | 1        | 15       | 2    | 引入覆盖概念 |
+| 4    | 6        | 1        | 18       | 2    | 6 种图案 |
+| 5    | 6        | 1        | 18       | 3    | 层数增加（深度 +1） |
+| 7    | 7        | 2        | 42       | 3    | setsPerType 跳到 2 |
+| 10   | 8        | 2        | 48       | 3    | 炸弹解锁 |
+| 15   | 10       | 2        | 60       | 4    | |
+| 20   | 12       | 2        | 72       | 4    | |
+| 25   | 14       | 3        | 126      | 4    | setsPerType 跳到 3 |
+| 30   | 15       | 3        | 135      | 5    | |
+| 50   | 20       | 3        | 180      | 6    | |
+| 70   | 23       | 3        | 207      | 6    | |
+| 100  | 26       | 4        | 312      | 7    | |
+| 150  | 28       | 4        | 336      | 7    | patternTypes 到达上限 28 |
+| 200  | 28       | 5        | 420      | 8    | |
+| 300  | 28       | 6        | 504      | 8    | setsPerType 到达上限 6 |
 
 ## 可解性保证
 
@@ -114,31 +97,21 @@ v2 通过推导关系彻底消除了此问题。
 
 **第一层：公式保证数学可行性** — tileCount = patternTypes × setsPerType × 3 确保每种图案都能被完美消除。
 
-**第二层：逆向生成 + 求解器验证** — 关卡布局通过逆向生成算法创建，再用求解器正向验证。详见 `gameplay/level-generation.md`。
-
-### 难度与解法数量的关系
-
-| 难度阶段 | 解法数量趋势 | 原因 |
-|----------|-------------|------|
-| 入门（1-34） | 很多 | 少量图案 + 单层，几乎任意顺序都能通关 |
-| 中等（35-69） | 较多 | 更多图案 + 多层，但仍有大量路径 |
-| 困难（70-99） | 较少 | 10+ 种图案 + 4 层，需要策略性选择 |
-| 专家（100+） | 很少（但 ≥ 1） | 复杂堆叠限制可用路径，每一步都可能关键 |
-
-无论难度多高，求解器验证确保 **至少存在一条不使用任何道具的通关路径**。
+**第二层：金字塔生成 + 求解器验证** — 关卡布局使用金字塔策略（上层严格是下层的子集），再用求解器正向验证。详见 `gameplay/level-generation.md`。
 
 ## 关键属性
 
 1. **确定性**：同一个 N 总是生成相同的关卡参数，可复现、可验证
-2. **平滑递增**：使用 ease-in-out 插值替代 `floor` 阶梯，难度渐进增长不突跳
-3. **可预测**：玩家卡关时知道"下一关会稍微难一点"是可预期的
+2. **渐进递增**：通过精心设计的关键帧表，难度平缓上升不突跳
+3. **可调优**：直接编辑 `js/difficulty.js` 中的关键帧即可调整难度曲线，无需修改游戏逻辑
 4. **数学安全**：推导关系消除了 v1 的数学不一致问题
+5. **无上限**：公式无 cap，最高支持关卡 10000
 
 ## 已确认决定
 
-### 1. 入门曲线更平缓
+### 1. 教程关卡难度递增
 
-基础值从 12/4/1 调整为 9/3/1，第一关只需 3 次匹配即可完成。
+教程关卡（1-9）不再使用固定参数，而是逐步增加瓦片数（9→12→15→18），让玩家在教程期间就开始感受难度变化。
 
 ### 2. 不设难度上限，通过缩放适配移动端
 
@@ -146,12 +119,10 @@ v2 通过推导关系彻底消除了此问题。
 
 **理由**：不应该因为屏幕尺寸限制难度上限，桌面和移动端应有一致的难度体验。
 
-> 注：AI 实现时已确认，缩放方案可接受，无须另设难度上限。
-
 ### 3. 采用混合音频方案
 
 - **音效**（点击/消除/连击等）：程序化合成（Web Audio API），零文件、零延迟、支持动态参数
-- **背景音乐**：短循环音频文件（.ogg + .m4a 双格式兼容 Safari），15-30 秒无缝循环，约 50-100KB
+- **背景音乐**：按主题组织的 MP3 文件，每个主题一首 BGM，随关卡主题切换自动更换
 
 **理由**：BGM 需要旋律质感，纯程序化振荡器无法达到；音效类则程序化更灵活。
 
@@ -189,9 +160,11 @@ v2 通过推导关系彻底消除了此问题。
 | 2 星 | 完成且步数 ≤ optimalSteps × 1.5 |
 | 3 星 | 完成且步数 ≤ optimalSteps × 1.2 + 未使用道具（提示除外） |
 
+无最优步数估计时的回退：未使用硬道具 → 3 星；使用了硬道具 → 2 星。
+
 ---
 
 ## 关联议题
 
-- 关卡生成算法（逆向验证 + 求解器）— 见 `gameplay/level-generation.md`
+- 关卡生成算法（金字塔布局 + 求解器）— 见 `gameplay/level-generation.md`
 - 星级评分系统中的"最优步数"如何对应此公式 — 见 `innovations/star-rating-system.md`
