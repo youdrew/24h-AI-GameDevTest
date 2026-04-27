@@ -1,7 +1,7 @@
 /* Tile Explorer Service Worker — caches CDN + static assets for offline play */
 
 // Bump VERSION whenever shipping new JS/CSS/HTML — old caches are deleted on activate.
-const VERSION = 'tile-explorer-v5';
+const VERSION = 'tile-explorer-v6';
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const MEDIA_CACHE = `${VERSION}-media`;     // theme BG images + BGM (SWR)
@@ -26,10 +26,10 @@ const PRECACHE = [
   './js/leaderboard.js',
   './js/ui.js',
   './js/config.js',
-  './sound/win.wav',
-  './sound/failure.wav',
-  './sound/SoundofUsingItems.wav',
-  './sound/bomb.wav'
+  './assets/sounds/win.wav',
+  './assets/sounds/failure.wav',
+  './assets/sounds/SoundofUsingItems.wav',
+  './assets/sounds/bomb.wav'
 ];
 
 const CDN_HOSTS = [

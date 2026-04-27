@@ -1,32 +1,96 @@
 // Tile Explorer — Web Audio synthesis + BGM + ducking
-// Synthesizes all SFX procedurally; loads BGM/win/fail from sound/ as decoded buffers.
+// Synthesizes all SFX procedurally; loads BGM/win/fail from assets/sounds/ as
+// decoded buffers. All SFX parameters live in js/sfx-config.js (editable);
+// SFX_FALLBACK below is a hardcoded "保险" copy used when a user-edited
+// field in the config table is missing or has the wrong type.
 
 import { CONFIG, encodeAssetPath } from './config.js';
 import { storage } from './storage.js';
+import { SFX, COMBO_CHORDS } from './sfx-config.js';
 
-const FILE_SOURCES = {
-  win:   'sound/win.wav',
-  fail:  'sound/failure.wav',
-  item:  'sound/SoundofUsingItems.wav',
-  bomb:  'sound/bomb.wav'
+// ─────────────────────────────────────────────────────────────────────────────
+// SFX_FALLBACK — internal "原始默认" snapshot. Mirrors sfx-config.js verbatim;
+// the resolve() helper below pulls a field from here whenever the user-editable
+// config value is missing or fails its type check, so a typo in sfx-config.js
+// never silences the game. If you intentionally tune defaults in sfx-config.js
+// and want the safety net to follow, update the corresponding field here too.
+// ─────────────────────────────────────────────────────────────────────────────
+const SFX_FALLBACK = {
+  tap:    { wave: 'sine',     freqStart: 800,  freqEnd: 1200, slideTime: 0.04, attack: 0.003, decay: 0.06, peak: 0.25 },
+  fly:    { wave: 'sine',     freqStart: 400,  freqEnd: 800,  slideTime: 0.18, attack: 0.005, decay: 0.18, peak: 0.18 },
+  undo:   { wave: 'sine',     freqStart: 600,  freqEnd: 300,  slideTime: 0.18, attack: 0.005, decay: 0.18, peak: 0.18 },
+  drop:   { wave: 'sine',     freqStart: 200,  freqEnd: 80,   slideTime: 0.10, attack: 0.005, decay: 0.12, peak: 0.30 },
+  reveal: { wave: 'triangle', freqStart: 1320, freqEnd: 1760, slideTime: 0.06, attack: 0.005, decay: 0.10, peak: 0.08 },
+  plainMatch: { wave: 'triangle', freq: 523.25, attack: 0.005, decay: 0.18, peak: 0.16 },
+  warning: { wave: 'square', freq1: 880, freq2: 660, gap: 0.090, attack: 0.005, decay: 0.08, peak: 0.12 },
+  shuffle: { wave: 'square', count: 6, freqMin: 400, freqMax: 1000, stagger: 0.030, attack: 0.002, decay: 0.04, peak: 0.12 },
+  hint:   { wave: 'sine',     freqs: [880, 1320, 1760],            stagger: 0.06, attack: 0.01, decay: 0.40, peak: 0.12 },
+  freeze: { wave: 'triangle', freqs: [1760, 1480, 1320, 880],      stagger: 0.04, attack: 0.01, decay: 0.35, peak: 0.15 },
+  reward: { wave: 'triangle', freqs: [659.25, 783.99, 1046.5, 1318.5], stagger: 0.06, attack: 0.01, decay: 0.30, peak: 0.18 },
+  lightning: {
+    noiseDuration: 0.50, noiseLowpass: 600, noisePeak: 0.25,
+    sawFreqStart: 2000, sawFreqEnd: 200, sawDuration: 0.40,
+    sawAttack: 0.02, sawDecay: 0.43, sawTotal: 0.50, sawPeak: 0.18
+  },
+  bomb:    { file: 'assets/sounds/bomb.wav' },
+  win:     { file: 'assets/sounds/win.wav' },
+  fail:    { file: 'assets/sounds/failure.wav' },
+  itemUse: { file: 'assets/sounds/SoundofUsingItems.wav' }
 };
 
-// One distinct chord per combo level (1..10). Diatonic walk up C major:
-// each step climbs one scale degree (and an octave at combo 8), so the
-// player hears the chain getting "higher" at every successful triple.
-// Waveform shifts triangle → triangle+sawtooth at high combos for extra zing.
-const COMBO_CHORDS = [
-  { freqs: [523.25, 659.25, 783.99],            wave: 'triangle', peak: 0.18 }, //  1: C  major
-  { freqs: [587.33, 698.46, 880.00],            wave: 'triangle', peak: 0.18 }, //  2: D  minor
-  { freqs: [659.25, 783.99, 987.77],            wave: 'triangle', peak: 0.19 }, //  3: E  minor
-  { freqs: [698.46, 880.00, 1046.50],           wave: 'triangle', peak: 0.19 }, //  4: F  major
-  { freqs: [783.99, 987.77, 1174.66],           wave: 'triangle', peak: 0.20 }, //  5: G  major
-  { freqs: [880.00, 1046.50, 1318.51],          wave: 'sawtooth', peak: 0.16 }, //  6: A  minor
-  { freqs: [987.77, 1174.66, 1479.98],          wave: 'sawtooth', peak: 0.16 }, //  7: B  dim
-  { freqs: [1046.50, 1318.51, 1567.98],         wave: 'sawtooth', peak: 0.17 }, //  8: C  maj (8va)
-  { freqs: [1174.66, 1396.91, 1760.00],         wave: 'sawtooth', peak: 0.17 }, //  9: D  min (8va)
-  { freqs: [1318.51, 1567.98, 1975.53, 2637.02],wave: 'sawtooth', peak: 0.18 }  // 10: E  min (8va) + sparkle
+const COMBO_CHORDS_FALLBACK = [
+  { freqs: [523.25, 659.25, 783.99],             wave: 'triangle', peak: 0.18 },
+  { freqs: [587.33, 698.46, 880.00],             wave: 'triangle', peak: 0.18 },
+  { freqs: [659.25, 783.99, 987.77],             wave: 'triangle', peak: 0.19 },
+  { freqs: [698.46, 880.00, 1046.50],            wave: 'triangle', peak: 0.19 },
+  { freqs: [783.99, 987.77, 1174.66],            wave: 'triangle', peak: 0.20 },
+  { freqs: [880.00, 1046.50, 1318.51],           wave: 'sawtooth', peak: 0.16 },
+  { freqs: [987.77, 1174.66, 1479.98],           wave: 'sawtooth', peak: 0.16 },
+  { freqs: [1046.50, 1318.51, 1567.98],          wave: 'sawtooth', peak: 0.17 },
+  { freqs: [1174.66, 1396.91, 1760.00],          wave: 'sawtooth', peak: 0.17 },
+  { freqs: [1318.51, 1567.98, 1975.53, 2637.02], wave: 'sawtooth', peak: 0.18 }
 ];
+
+// Field-level fallback helpers. resolve(name) returns a fully-populated object
+// where every field is either the user's valid value or the fallback default.
+function num(v, fb) { return (typeof v === 'number' && Number.isFinite(v)) ? v : fb; }
+function str(v, fb) { return (typeof v === 'string' && v.length > 0) ? v : fb; }
+function freqArr(v, fb) {
+  if (!Array.isArray(v) || v.length === 0) return fb;
+  return v.every((x) => typeof x === 'number' && Number.isFinite(x) && x > 0) ? v : fb;
+}
+
+function resolve(name) {
+  const user = (SFX && SFX[name]) || {};
+  const fb = SFX_FALLBACK[name] || {};
+  const out = {};
+  for (const k of Object.keys(fb)) {
+    const fv = fb[k];
+    const uv = user[k];
+    if (typeof fv === 'number')        out[k] = num(uv, fv);
+    else if (typeof fv === 'string')   out[k] = str(uv, fv);
+    else if (Array.isArray(fv))        out[k] = freqArr(uv, fv);
+    else                               out[k] = (uv !== undefined ? uv : fv);
+  }
+  return out;
+}
+
+function resolveChord(idx) {
+  const list = Array.isArray(COMBO_CHORDS) ? COMBO_CHORDS : COMBO_CHORDS_FALLBACK;
+  const user = list[idx] || {};
+  const fb = COMBO_CHORDS_FALLBACK[idx] || COMBO_CHORDS_FALLBACK[COMBO_CHORDS_FALLBACK.length - 1];
+  return {
+    freqs: freqArr(user.freqs, fb.freqs),
+    wave:  str(user.wave, fb.wave),
+    peak:  num(user.peak, fb.peak)
+  };
+}
+
+const COMBO_LIST_LEN = (Array.isArray(COMBO_CHORDS) ? COMBO_CHORDS.length : 0) || COMBO_CHORDS_FALLBACK.length;
+
+// File buffers are keyed by short name; map each to its config slot so the
+// loader respects user-overridden paths from sfx-config.js.
+const FILE_TO_CONFIG = { win: 'win', fail: 'fail', item: 'itemUse', bomb: 'bomb' };
 
 class AudioEngine {
   constructor() {
@@ -81,8 +145,9 @@ class AudioEngine {
   }
 
   _preloadFiles() {
-    for (const [key, url] of Object.entries(FILE_SOURCES)) {
-      this._loadBuffer(key, url);
+    for (const key of Object.keys(FILE_TO_CONFIG)) {
+      const c = resolve(FILE_TO_CONFIG[key]);
+      this._loadBuffer(key, c.file);
     }
   }
 
@@ -237,41 +302,74 @@ class AudioEngine {
     o.stop(this.ctx.currentTime + attack + decay + 0.02);
   }
 
-  // Tap: short rising sine 800→1200Hz
+  // Render a "slide" SFX (single oscillator with optional pitch slide).
+  _playSlideFromConfig(name) {
+    const c = resolve(name);
+    this._osc({
+      type: c.wave,
+      freq: c.freqStart,
+      slideTo: c.freqEnd,
+      slideTime: c.slideTime,
+      attack: c.attack,
+      decay: c.decay,
+      peak: c.peak
+    });
+  }
+
+  // Render a chime (a sequence of single notes with a constant stagger).
+  _playChimeFromConfig(name) {
+    if (!this.unlocked || !storage.state.settings.soundEnabled) return;
+    const c = resolve(name);
+    const t0 = this.ctx.currentTime;
+    c.freqs.forEach((f, i) => {
+      const o = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      o.type = c.wave;
+      o.frequency.value = f;
+      o.connect(g); g.connect(this.sfxGain);
+      const start = t0 + i * c.stagger;
+      g.gain.setValueAtTime(0, start);
+      g.gain.linearRampToValueAtTime(c.peak, start + c.attack);
+      g.gain.exponentialRampToValueAtTime(0.0001, start + c.attack + c.decay);
+      o.start(start);
+      o.stop(start + c.attack + c.decay + 0.02);
+    });
+  }
+
+  // Tap: short rising tone. Per sfx-config.js → tap.
   tap() {
-    this._osc({ type: 'sine', freq: 800, slideTo: 1200, slideTime: 0.04, attack: 0.003, decay: 0.06, peak: 0.25 });
+    this._playSlideFromConfig('tap');
     this._duck();
   }
 
-  // Fly-to-slot: rising tone 400→800Hz, 200ms
+  // Fly-to-slot: rising tone. Per sfx-config.js → fly.
   fly() {
-    this._osc({ type: 'sine', freq: 400, slideTo: 800, slideTime: 0.18, attack: 0.005, decay: 0.18, peak: 0.18 });
+    this._playSlideFromConfig('fly');
     this._duck();
   }
 
-  // Match (3-tile clear). Each combo level gets its own chord — a diatonic
-  // walk up C major so combo 1 → 10 sounds clearly higher and richer at each
-  // step. comboLevel 0 (non-chain match) plays a single soft note instead of
-  // a chord, so the player still hears the pop without the chain reward feel.
+  // Match (3-tile clear). comboLevel 0 plays a soft single note (plainMatch);
+  // 1..N looks up COMBO_CHORDS for a richer chord.
   match(comboLevel = 0) {
     if (!this.unlocked || !storage.state.settings.soundEnabled) return;
     const t0 = this.ctx.currentTime;
     if (comboLevel <= 0) {
-      this._osc({ type: 'triangle', freq: 523.25, attack: 0.005, decay: 0.18, peak: 0.16 });
+      const c = resolve('plainMatch');
+      this._osc({ type: c.wave, freq: c.freq, attack: c.attack, decay: c.decay, peak: c.peak });
       this._duck();
       return;
     }
-    const idx = Math.min(COMBO_CHORDS.length - 1, comboLevel - 1);
-    const { freqs, wave, peak } = COMBO_CHORDS[idx];
-    freqs.forEach((f, i) => {
+    const idx = Math.min(COMBO_LIST_LEN - 1, comboLevel - 1);
+    const chord = resolveChord(idx);
+    chord.freqs.forEach((f, i) => {
       const o = this.ctx.createOscillator();
       const g = this.ctx.createGain();
-      o.type = wave;
+      o.type = chord.wave;
       o.frequency.value = f;
       o.connect(g);
       g.connect(this.sfxGain);
       g.gain.setValueAtTime(0, t0);
-      g.gain.linearRampToValueAtTime(peak, t0 + 0.005 + i * 0.012);
+      g.gain.linearRampToValueAtTime(chord.peak, t0 + 0.005 + i * 0.012);
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.42);
       o.start(t0);
       o.stop(t0 + 0.48);
@@ -279,12 +377,14 @@ class AudioEngine {
     this._duck();
   }
 
-  // Lightning (combo x5+ or meter release): noise burst + saw sweep
+  // Lightning: noise burst + saw sweep. Per sfx-config.js → lightning.
   lightning() {
     if (!this.unlocked || !storage.state.settings.soundEnabled) return;
+    const c = resolve('lightning');
     const t0 = this.ctx.currentTime;
+
     // Noise burst (thunder)
-    const len = Math.floor(this.ctx.sampleRate * 0.5);
+    const len = Math.max(1, Math.floor(this.ctx.sampleRate * c.noiseDuration));
     const noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
     const data = noiseBuf.getChannelData(0);
     for (let i = 0; i < len; i++) {
@@ -294,115 +394,88 @@ class AudioEngine {
     noise.buffer = noiseBuf;
     const lp = this.ctx.createBiquadFilter();
     lp.type = 'lowpass';
-    lp.frequency.value = 600;
+    lp.frequency.value = c.noiseLowpass;
     const ng = this.ctx.createGain();
-    ng.gain.value = 0.25;
+    ng.gain.value = c.noisePeak;
     noise.connect(lp); lp.connect(ng); ng.connect(this.sfxGain);
     noise.start(t0);
 
     // Saw sweep (zap)
     const o = this.ctx.createOscillator();
     o.type = 'sawtooth';
-    o.frequency.setValueAtTime(2000, t0);
-    o.frequency.exponentialRampToValueAtTime(200, t0 + 0.4);
+    o.frequency.setValueAtTime(c.sawFreqStart, t0);
+    o.frequency.exponentialRampToValueAtTime(c.sawFreqEnd, t0 + c.sawDuration);
     const og = this.ctx.createGain();
     og.gain.setValueAtTime(0, t0);
-    og.gain.linearRampToValueAtTime(0.18, t0 + 0.02);
-    og.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.45);
+    og.gain.linearRampToValueAtTime(c.sawPeak, t0 + c.sawAttack);
+    og.gain.exponentialRampToValueAtTime(0.0001, t0 + c.sawAttack + c.sawDecay);
     o.connect(og); og.connect(this.sfxGain);
-    o.start(t0); o.stop(t0 + 0.5);
+    o.start(t0); o.stop(t0 + c.sawTotal);
     this._duck();
   }
 
-  // Slot warning: alternating two-tone beep
+  // Slot warning: alternating two-tone beep. Per sfx-config.js → warning.
   warning() {
-    this._osc({ type: 'square', freq: 880, attack: 0.005, decay: 0.08, peak: 0.12 });
-    setTimeout(() => this._osc({ type: 'square', freq: 660, attack: 0.005, decay: 0.08, peak: 0.12 }), 90);
+    const c = resolve('warning');
+    this._osc({ type: c.wave, freq: c.freq1, attack: c.attack, decay: c.decay, peak: c.peak });
+    setTimeout(() => {
+      this._osc({ type: c.wave, freq: c.freq2, attack: c.attack, decay: c.decay, peak: c.peak });
+    }, c.gap * 1000);
   }
 
-  // Shuffle: rapid clicks
+  // Shuffle: rapid clicks. Per sfx-config.js → shuffle.
   shuffle() {
     if (!this.unlocked || !storage.state.settings.soundEnabled) return;
-    for (let i = 0; i < 6; i++) {
+    const c = resolve('shuffle');
+    const range = Math.max(1, c.freqMax - c.freqMin);
+    for (let i = 0; i < c.count; i++) {
       setTimeout(() => this._osc({
-        type: 'square',
-        freq: 400 + Math.random() * 600,
-        attack: 0.002, decay: 0.04, peak: 0.12
-      }), i * 30);
+        type: c.wave,
+        freq: c.freqMin + Math.random() * range,
+        attack: c.attack,
+        decay: c.decay,
+        peak: c.peak
+      }), i * c.stagger * 1000);
     }
     this._duck();
   }
 
-  // Undo: reverse pitch dive
+  // Undo: reverse pitch dive. Per sfx-config.js → undo.
   undo() {
-    this._osc({ type: 'sine', freq: 600, slideTo: 300, slideTime: 0.18, attack: 0.005, decay: 0.18, peak: 0.18 });
+    this._playSlideFromConfig('undo');
     this._duck();
   }
 
-  // Hint: gentle chime
+  // Hint: gentle chime. Per sfx-config.js → hint.
   hint() {
-    if (!this.unlocked || !storage.state.settings.soundEnabled) return;
-    const t0 = this.ctx.currentTime;
-    [880, 1320, 1760].forEach((f, i) => {
-      const o = this.ctx.createOscillator();
-      const g = this.ctx.createGain();
-      o.type = 'sine';
-      o.frequency.value = f;
-      o.connect(g); g.connect(this.sfxGain);
-      g.gain.setValueAtTime(0, t0 + i * 0.06);
-      g.gain.linearRampToValueAtTime(0.12, t0 + i * 0.06 + 0.01);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + i * 0.06 + 0.4);
-      o.start(t0 + i * 0.06); o.stop(t0 + i * 0.06 + 0.45);
-    });
+    this._playChimeFromConfig('hint');
     this._duck();
   }
 
-  // Bomb: file-based explosion sample (sound/bomb.wav)
+  // Bomb: file-based explosion sample.
   bomb() {
     this.playFile('bomb');
   }
 
-  // Freeze: shimmery descending tones
+  // Freeze: shimmery descending tones. Per sfx-config.js → freeze.
   freeze() {
-    if (!this.unlocked || !storage.state.settings.soundEnabled) return;
-    const t0 = this.ctx.currentTime;
-    [1760, 1480, 1320, 880].forEach((f, i) => {
-      const o = this.ctx.createOscillator();
-      const g = this.ctx.createGain();
-      o.type = 'triangle'; o.frequency.value = f;
-      o.connect(g); g.connect(this.sfxGain);
-      g.gain.setValueAtTime(0, t0 + i * 0.04);
-      g.gain.linearRampToValueAtTime(0.15, t0 + i * 0.04 + 0.01);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + i * 0.04 + 0.35);
-      o.start(t0 + i * 0.04); o.stop(t0 + i * 0.04 + 0.4);
-    });
+    this._playChimeFromConfig('freeze');
     this._duck();
   }
 
-  // Drop: thump
+  // Drop: thump. Per sfx-config.js → drop.
   drop() {
-    this._osc({ type: 'sine', freq: 200, slideTo: 80, slideTime: 0.1, attack: 0.005, decay: 0.12, peak: 0.3 });
+    this._playSlideFromConfig('drop');
   }
 
-  // Reveal: soft chime when a tile becomes uncovered
+  // Reveal: soft chime when a tile becomes uncovered. Per sfx-config.js → reveal.
   reveal() {
-    this._osc({ type: 'triangle', freq: 1320, slideTo: 1760, slideTime: 0.06, attack: 0.005, decay: 0.1, peak: 0.08 });
+    this._playSlideFromConfig('reveal');
   }
 
-  // Reward pickup
+  // Reward pickup. Per sfx-config.js → reward.
   reward() {
-    if (!this.unlocked || !storage.state.settings.soundEnabled) return;
-    const t0 = this.ctx.currentTime;
-    [659.25, 783.99, 1046.5, 1318.5].forEach((f, i) => {
-      const o = this.ctx.createOscillator();
-      const g = this.ctx.createGain();
-      o.type = 'triangle'; o.frequency.value = f;
-      o.connect(g); g.connect(this.sfxGain);
-      g.gain.setValueAtTime(0, t0 + i * 0.06);
-      g.gain.linearRampToValueAtTime(0.18, t0 + i * 0.06 + 0.01);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + i * 0.06 + 0.3);
-      o.start(t0 + i * 0.06); o.stop(t0 + i * 0.06 + 0.35);
-    });
+    this._playChimeFromConfig('reward');
     this._duck();
   }
 
