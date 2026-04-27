@@ -1,9 +1,10 @@
 /* Tile Explorer Service Worker — caches CDN + static assets for offline play */
 
 // Bump VERSION whenever shipping new JS/CSS/HTML — old caches are deleted on activate.
-const VERSION = 'tile-explorer-v4';
+const VERSION = 'tile-explorer-v5';
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
+const MEDIA_CACHE = `${VERSION}-media`;     // theme BG images + BGM (SWR)
 
 const PRECACHE = [
   './',
@@ -88,7 +89,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Same-origin: network-first for HTML, cache-first for assets
+  // Same-origin: network-first for HTML, cache-first for assets, SWR for media
   if (url.origin === location.origin) {
     if (req.mode === 'navigate' || req.headers.get('accept')?.includes('text/html')) {
       event.respondWith(
@@ -98,6 +99,25 @@ self.addEventListener('fetch', (event) => {
           return res;
         }).catch(() => caches.match(req).then((c) => c || caches.match('./index.html')))
       );
+      return;
+    }
+    // Theme assets (per-level BG images and BGM) are large and rarely change
+    // without a VERSION bump. Stale-while-revalidate: serve from cache fast,
+    // refresh in the background so cache stays current. First visit pays the
+    // download once; every subsequent visit (online or offline) is instant.
+    if (url.pathname.startsWith('/assets/pic/') || url.pathname.startsWith('/assets/music/')) {
+      const swr = caches.open(MEDIA_CACHE).then(async (cache) => {
+        const cached = await cache.match(req);
+        const networkFetch = fetch(req).then((res) => {
+          if (res && res.ok) cache.put(req, res.clone());
+          return res;
+        }).catch(() => cached);            // offline: fall back to whatever we have
+        // Keep the SW alive until the background refresh settles, so the cache
+        // update isn't dropped when the response promise resolves first.
+        event.waitUntil(networkFetch.catch(() => {}));
+        return cached || networkFetch;     // cache hit: return immediately, refresh in background
+      });
+      event.respondWith(swr);
       return;
     }
     event.respondWith(

@@ -47,6 +47,7 @@ export class Game {
     this.chainPattern = null;
     this.chainCount = 0;
     this.optimalSteps = null;
+    this.optimalIsFallback = false;      // true when solver timed out / errored
     this.tilePopHistory = [];            // for undo, stack of { sourceTileId, slotIndex }
     this.matchClearsThisRound = 0;       // for falling-queue trigger
     this.activePowerupMode = null;       // 'bomb' | 'freeze' | null
@@ -245,21 +246,32 @@ export class Game {
     this.board.setTheme(theme);
     this.slot.setTheme(theme);
 
-    // Use cached layout if available — but discard it if the saved layout was
-    // generated under an older, larger BOARD_MAX (otherwise the board would
-    // overflow the new cap).
+    // Pull from cache and decide what we still need to compute. Layouts are
+    // deterministic (seeded by N) so when only the layout was trimmed we can
+    // regenerate it cheaply and still trust a cached optimalSteps.
     let layout = null;
     const cached = storage.getCachedLevel(N);
-    const cacheUsable = cached && cached.layout && cached.layout.boardSize
+    const cachedLayoutOk = cached && cached.layout && cached.layout.boardSize
       && cached.layout.boardSize.cols <= BOARD_MAX
       && cached.layout.boardSize.rows <= BOARD_MAX;
-    if (cacheUsable) {
+    const cachedSteps = cached && typeof cached.optimalSteps === 'number'
+      ? cached.optimalSteps : null;
+
+    if (cachedLayoutOk) {
       layout = cached.layout;
-      this.optimalSteps = cached.optimalSteps;
     } else {
       layout = generateLayout(N);
+    }
+
+    if (cachedSteps != null) {
+      this.optimalSteps = cachedSteps;
+      this.optimalIsFallback = false;
+      // Make sure both halves are cached together going forward (re-store the
+      // (possibly regenerated) layout under the same key).
+      if (!cachedLayoutOk) storage.cacheLevel(N, layout, cachedSteps);
+    } else {
       this.optimalSteps = null;
-      // Solve in background
+      this.optimalIsFallback = false;
       this._solveAsync(N, layout);
     }
     this.board.load(layout);
@@ -272,8 +284,14 @@ export class Game {
 
   // Load + place the theme's background image. Cover-style fit, dimmed so it
   // doesn't compete with tiles. Failure is non-fatal (warning + skip).
+  //
+  // Two rapid setTheme() calls can race: the first awaits Assets.load and may
+  // resolve AFTER the second already installed its sprite, overwriting the
+  // newer background with a stale one. We guard with a monotonic token and
+  // bail if the world moved on.
   async _setBackground(theme) {
     if (!theme || !theme.bgImage) return;
+    const token = (this._bgToken = (this._bgToken || 0) + 1);
     const url = encodeAssetPath(theme.bgImage);
     let tex;
     try {
@@ -282,6 +300,7 @@ export class Game {
       console.warn('[game] background load failed', url, err);
       return;
     }
+    if (token !== this._bgToken) return;   // a newer setBackground superseded us
     if (this.bgSprite) {
       this.bgLayer.removeChild(this.bgSprite);
       this.bgSprite.destroy();
@@ -315,6 +334,22 @@ export class Game {
     if (this.state === STATES.PAUSED) this.state = STATES.PLAYING;
   }
 
+  // Tear the in-progress level back down to a fresh "menu" state. UI calls
+  // this when the player returns to the menu from pause/gameover so the next
+  // startLevel() begins from a known-clean slate.
+  quit() {
+    this.state = STATES.MENU;
+    this._processing = false;
+    this.activePowerupMode = null;
+    this.tilePopHistory = [];
+    this.matchClearsThisRound = 0;
+    this.combo = 0;
+    this.chainPattern = null;
+    this.chainCount = 0;
+    this._refreshPowerupCounts();
+    this._renderComboMeter();
+  }
+
   // ---- Solver wiring --------------------------------------------------------
 
   _solveAsync(N, layout) {
@@ -332,13 +367,18 @@ export class Game {
                     : tileCount <= CONFIG.SOLVER_THRESH_MEDIUM ? CONFIG.SOLVER_TIMEOUT_MEDIUM
                                                                 : CONFIG.SOLVER_TIMEOUT_LARGE;
     let settled = false;
+    let watchdogTimer = null;
     const settle = (steps, reason) => {
       if (settled) return;
       settled = true;
+      // Track whether the value is real or a fallback so star scoring can
+      // back off (see _computeStars).
       this.optimalSteps = steps ?? layout.tiles.length;
+      this.optimalIsFallback = steps == null;
       if (steps != null) storage.cacheLevel(N, layout, steps);
       else if (reason) console.warn('[game] solver fallback:', reason);
       try { worker.terminate(); } catch {}
+      if (watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
     };
     worker.onmessage = (e) => {
       const msg = e.data;
@@ -350,7 +390,7 @@ export class Game {
       settle(null, 'error');
     };
     // Watchdog: if the worker hangs (shouldn't, but defensive), kill it
-    setTimeout(() => settle(null, 'watchdog'), timeoutMs + 500);
+    watchdogTimer = setTimeout(() => settle(null, 'watchdog'), timeoutMs + 500);
     worker.postMessage({
       tiles: layout.tiles.map((t) => ({ id: t.id, patternId: t.patternId, layer: t.layer, gridX: t.gridX, gridY: t.gridY })),
       slotCapacity: CONFIG.SLOT_CAPACITY,
@@ -567,6 +607,13 @@ export class Game {
 
   usePowerup(id) {
     if (this.state !== STATES.PLAYING) return;
+    // _processing is set while a tile-click animation chain is mid-flight.
+    // Allowing a powerup to fire here can mutate board.tilesById underneath
+    // the in-flight handler (sprite double-destroy, slot/board desync, etc).
+    if (this._processing) return;
+    // Toggle modes (bomb/freeze) just flip a flag, no immediate state change —
+    // they're cheap and intuitive to allow always; the actual targeting click
+    // re-enters handleTileClick which itself respects _processing.
     const have = storage.state.powerups[id] || 0;
     if (have <= 0) return;
     audio.unlock();
@@ -753,11 +800,19 @@ export class Game {
 
   _computeStars() {
     let stars = 1;
-    if (this.optimalSteps != null && this.optimalSteps > 0) {
-      if (this.steps <= this.optimalSteps * 1.5) stars = 2;
-      if (this.steps <= this.optimalSteps * 1.2 && !this.usedHardPowerup) stars = 3;
+    // When the solver timed out we don't have a real optimal — use tileCount
+    // * 1.05 as a fallback estimate (a deliberate slack of 5% so big-board
+    // players aren't penalised for an unsolved board). When the solver
+    // succeeded we trust its number directly.
+    let opt = this.optimalSteps;
+    if (this.optimalIsFallback && this.board?.layout?.tiles) {
+      opt = this.board.layout.tiles.length * 1.05;
+    }
+    if (opt != null && opt > 0) {
+      if (this.steps <= opt * 1.5) stars = 2;
+      if (this.steps <= opt * 1.2 && !this.usedHardPowerup) stars = 3;
     } else {
-      // Without an optimal estimate, give 2 stars by default for completion
+      // Solver hasn't finished yet at level-complete time: be lenient.
       stars = this.usedHardPowerup ? 2 : 3;
     }
     return stars;

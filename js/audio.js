@@ -69,7 +69,8 @@ class AudioEngine {
         await this.ctx.resume();
       }
       this.unlocked = true;
-      // Lazy-load BGM and SFX file buffers in background
+      // Eager-load the small file SFX (win/fail/item/bomb) in background. BGM
+      // is loaded lazily on the first setTheme() — see _playBgmUrl().
       this._preloadFiles();
       if (this.pendingBgmStart && storage.state.settings.musicEnabled) {
         this.startBgm();

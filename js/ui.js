@@ -250,7 +250,7 @@ class UI {
   }
 
   _handleQuitMenu() {
-    this.game.state = 'menu';
+    this.game.quit();
     this.showMenu();
   }
 

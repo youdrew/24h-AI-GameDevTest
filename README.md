@@ -61,9 +61,13 @@ assets/sounds/   待提供：bgm.ogg + bgm.m4a（详见下方资源清单）
 
 ## 配置 Supabase 排行榜
 
-1. 在 Supabase 创建项目，按 `doc/leaderboard/database-schema.md` 跑 SQL（创建 `players` 表、`level_records` 表、`upsert_record` RPC、RLS 策略）。
-2. 把 `Project URL` 和 `anon key` 填到 `js/config.js` 的 `SUPABASE_URL` 和 `SUPABASE_ANON_KEY`。
-3. 重启服务器即可。未配置时排行榜面板会显示 "未配置"，本地进度仍正常保存。
+仓库里 `js/config.js` 已经填了一个**演示用** Supabase 项目的 URL 和 anon key（key 是 public 设计、读到也没风险）。如果你 fork 后想接自己的项目：
+
+1. 在 Supabase 创建项目，按 `doc/leaderboard/supabase-setup.sql.md` 依次跑 §1–§4 的 SQL（建表、`upsert_record` RPC、RLS 策略、`player_totals` 聚合 view）。
+2. 把自己项目的 `Project URL` 和 `anon key` 替换到 `js/config.js`。
+3. 重启服务器即可。未配置（两个值留空）时排行榜面板会显示 "未配置"，本地进度仍正常保存。
+
+> 注意：**§4 的 `player_totals` view 是新加的**，老项目升级时单独把那段补跑一次就行。`getGlobalTop` 在 view 不存在时会自动降级到老的客户端聚合路径（仅取 1000 条）。
 
 ## 已知限制 / 后续可优化
 

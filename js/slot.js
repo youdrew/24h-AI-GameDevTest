@@ -234,7 +234,7 @@ export class Slot {
           cell.sprite.x = 0;
           cell.sprite.y = 0;
         }
-      } else if (cell !== target) {
+      } else {
         cell.sprite = null;
         cell.patternId = null;
         cell.sourceTileId = null;

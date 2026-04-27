@@ -16,7 +16,14 @@ function defaultState() {
     },
     playerId: generateUUID(),
     playerName: defaultPlayerName(),
-    levelCache: {},
+    // layoutCache is the fat, regeneratable part — pure speed win, can be
+    // trimmed on quota pressure (level.js generateLayout(N) is deterministic
+    // by seed so we can always rebuild it).
+    layoutCache: {},
+    // optimalStepsCache holds the scarce part — solver work is expensive
+    // (Web Worker DFS, sometimes seconds per level). NEVER trimmed under
+    // quota pressure. A miss here means re-running the solver.
+    optimalStepsCache: {},
     tutorialSeen: {
       basicTap: false,
       cover: false,
@@ -53,6 +60,21 @@ function migrate(data) {
   if (!data || typeof data !== 'object' || !data.schemaVersion) {
     return defaultState();
   }
+  // v1 stored levelCache: { [N]: { layout, optimalSteps } }. The new shape
+  // splits the expensive optimalSteps from the regeneratable layout so quota
+  // trimming can drop layouts without losing solver work.
+  if (data.levelCache && (!data.layoutCache || !data.optimalStepsCache)) {
+    data.layoutCache = data.layoutCache || {};
+    data.optimalStepsCache = data.optimalStepsCache || {};
+    for (const [k, v] of Object.entries(data.levelCache)) {
+      if (!v) continue;
+      if (v.layout && data.layoutCache[k] == null) data.layoutCache[k] = v.layout;
+      if (typeof v.optimalSteps === 'number' && data.optimalStepsCache[k] == null) {
+        data.optimalStepsCache[k] = v.optimalSteps;
+      }
+    }
+    delete data.levelCache;
+  }
   // Future migration steps go here:
   // if (data.schemaVersion === 1) { /* upgrade to v2 */ }
   data.schemaVersion = CURRENT_VERSION;
@@ -70,7 +92,8 @@ function mergeWithDefaults(state) {
     tutorialSeen: { ...base.tutorialSeen, ...(state.tutorialSeen || {}) },
     stars: state.stars || {},
     bestSteps: state.bestSteps || {},
-    levelCache: state.levelCache || {},
+    layoutCache: state.layoutCache || {},
+    optimalStepsCache: state.optimalStepsCache || {},
     pendingSubmissions: state.pendingSubmissions || []
   };
 }
@@ -91,18 +114,36 @@ function read() {
   return cache;
 }
 
+// Bounded LRU on layoutCache; uninvolved with optimalStepsCache (which is
+// kept whole because it's expensive to rebuild). LAYOUT_CACHE_CAP is large
+// enough that ordinary play never trims, and small enough that 100+ replayed
+// levels stay under typical 5MB origin quota.
+const LAYOUT_CACHE_CAP = 100;
+
+function trimLayoutCache(cap) {
+  const keys = Object.keys(cache.layoutCache);
+  if (keys.length <= cap) return false;
+  // Object insertion order ≈ recency-of-write since cacheLevel re-assigns;
+  // drop the oldest. (Map would be cleaner but JSON-serializing it is uglier.)
+  const drop = keys.length - cap;
+  for (let i = 0; i < drop; i++) delete cache.layoutCache[keys[i]];
+  return true;
+}
+
 function write() {
   if (writeFailed) return;
+  // Pre-emptively keep layoutCache bounded so single writes don't blow up.
+  trimLayoutCache(LAYOUT_CACHE_CAP);
   try {
     localStorage.setItem(KEY, JSON.stringify(cache));
   } catch (err) {
     if (err && err.name === 'QuotaExceededError') {
-      // Trim levelCache and try once more (it's the largest growable field)
-      console.warn('[storage] quota exceeded, trimming levelCache');
-      const trimmed = {};
-      const keys = Object.keys(cache.levelCache).slice(-10);
-      for (const k of keys) trimmed[k] = cache.levelCache[k];
-      cache.levelCache = trimmed;
+      // Aggressive fallback: only retain the 10 most recently cached layouts.
+      // optimalStepsCache stays intact even at this stage.
+      console.warn('[storage] quota exceeded, trimming layoutCache to 10');
+      const keys = Object.keys(cache.layoutCache);
+      const keep = new Set(keys.slice(-10));
+      for (const k of keys) if (!keep.has(k)) delete cache.layoutCache[k];
       try {
         localStorage.setItem(KEY, JSON.stringify(cache));
         return;
@@ -190,12 +231,20 @@ export const storage = {
 
   cacheLevel(level, layout, optimalSteps) {
     const state = read();
-    state.levelCache[level] = { layout, optimalSteps };
+    // Re-insert under the same key so iteration order treats it as "most
+    // recently used" — this is what trimLayoutCache leans on for LRU.
+    delete state.layoutCache[level];
+    state.layoutCache[level] = layout;
+    if (typeof optimalSteps === 'number') state.optimalStepsCache[level] = optimalSteps;
     write();
   },
 
   getCachedLevel(level) {
-    return read().levelCache[level] || null;
+    const state = read();
+    const layout = state.layoutCache[level];
+    const optimalSteps = state.optimalStepsCache[level];
+    if (!layout && optimalSteps == null) return null;
+    return { layout: layout || null, optimalSteps: optimalSteps ?? null };
   },
 
   markTutorial(key) {
