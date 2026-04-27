@@ -33,13 +33,15 @@ js/
   solver.js      Web Worker 回溯求解器（计算 optimalSteps）
   matcher.js     三消检测
   animation.js   PIXI.Ticker 缓动 + 粒子池
-  audio.js       Web Audio API 程序化音效 + BGM
+  audio.js       Web Audio API 程序化音效 + BGM（从 sfx-config.js 读参数）
+  sfx-config.js  音效参数表（可编辑微调；改坏字段会自动回退到默认值）
   storage.js     localStorage 读写（quota-safe + 迁移）
   leaderboard.js Supabase REST（可选；未配置则静默降级）
   ui.js          DOM 面板（菜单/设置/排行榜/通关/失败）
   config.js      运行时常量（Supabase URL/KEY 在这里填）
-sound/           已有 wav：win, failure, SoundofUsingItems
-assets/sounds/   待提供：bgm.ogg + bgm.m4a（详见下方资源清单）
+  difficulty.js  难度 keyframe 表（可编辑微调）
+assets/sounds/   文件音效：win.wav / failure.wav / bomb.wav / SoundofUsingItems.wav
+assets/music/    BGM 主题目录（每个主题一个子文件夹）
 ```
 
 ## 实现完成度

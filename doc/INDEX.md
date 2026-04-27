@@ -80,7 +80,7 @@ doc/
 |------|------|------|
 | BGM 音乐 | `assets/music/Themes/{ThemeName}/*.mp3` | 6 个主题各 3 份 MP3（冗余备份），主题 BGM |
 | 背景图 | `assets/pic/{ThemeName}.{png,jpeg}` | 6 个主题背景图 |
-| 音效文件 | `sound/*.wav` | win.wav、failure.wav、bomb.wav、SoundofUsingItems.wav |
+| 音效文件 | `assets/sounds/*.wav` | win.wav、failure.wav、bomb.wav、SoundofUsingItems.wav（路径可在 `js/sfx-config.js` 修改） |
 
 ## 瓦片图案方案
 

@@ -21,14 +21,10 @@
 │   ├── matcher.js          # 三消检测逻辑
 │   ├── animation.js        # Ticker 动画队列、粒子池、特效
 │   ├── audio.js            # Web Audio 音效合成 + BGM 主题切换控制
+│   ├── sfx-config.js       # 音效参数表（可编辑微调；audio.js 字段级回退到默认值）
 │   ├── storage.js          # localStorage 读写、离线提交队列
 │   ├── leaderboard.js      # Supabase REST API（fetch）
 │   └── ui.js               # DOM UI 管理（面板显示/隐藏、奖励选择、教程气泡）
-├── sound/                  # 项目所有者提供的原始音效文件（WAV）
-│   ├── win.wav             # 关卡完成音效
-│   ├── failure.wav         # 关卡失败音效
-│   ├── bomb.wav            # 炸弹音效
-│   └── SoundofUsingItems.wav  # 道具使用音效
 ├── assets/
 │   ├── pic/                # 主题背景图（每个主题一张）
 │   │   ├── Orchard.png
@@ -46,6 +42,10 @@
 │   │       ├── Starbound/
 │   │       ├── Bistro/
 │   │       └── Retro Quest/
-│   └── sounds/             # 发布音频占位目录（实际音效在 sound/ 和 Themes/ 中）
+│   └── sounds/             # 文件音效（WAV）
+│       ├── win.wav             # 关卡完成
+│       ├── failure.wav         # 关卡失败
+│       ├── bomb.wav            # 炸弹
+│       └── SoundofUsingItems.wav  # 道具使用
 └── doc/                    # 设计文档
 ```

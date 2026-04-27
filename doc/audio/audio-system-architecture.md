@@ -5,9 +5,9 @@
 音效和 BGM 采用混合方案：
 
 - **音效**：全部通过 Web Audio API 程序化合成，无需任何音频文件（关卡完成和失败除外）
-- **文件音效**：`sound/` 目录中的 WAV 文件（win.wav、failure.wav、bomb.wav、SoundofUsingItems.wav）
+- **文件音效**：`assets/sounds/` 目录中的 WAV 文件（win.wav、failure.wav、bomb.wav、SoundofUsingItems.wav），路径在 `js/sfx-config.js` 集中配置
 - **BGM**：按主题组织的 MP3 文件，每个主题一首 BGM，位于 `assets/music/Themes/{ThemeName}/`，随关卡主题切换自动更换
-- **声音源文件**（`sound/` 目录）：项目所有者提供的原始 WAV 音频
+- **参数表**：所有程序化音效的参数（频率、波形、包络、音量）都在 `js/sfx-config.js` 集中配置；audio.js 读取时会按字段类型校验，错误回退到内置默认值
 
 ## Web Audio API
 
@@ -27,10 +27,10 @@
   - 连击音调递进等交互式音效只能程序化实现
 
 - **关卡完成 / 失败 / 炸弹 / 道具使用**：音频文件（WAV）
-  - `sound/win.wav` — 关卡完成
-  - `sound/failure.wav` — 关卡失败
-  - `sound/bomb.wav` — 炸弹音效
-  - `sound/SoundofUsingItems.wav` — 道具使用
+  - `assets/sounds/win.wav` — 关卡完成
+  - `assets/sounds/failure.wav` — 关卡失败
+  - `assets/sounds/bomb.wav` — 炸弹音效
+  - `assets/sounds/SoundofUsingItems.wav` — 道具使用
 
 - **背景音乐**：主题 MP3 文件
   - 6 个主题各有独立 BGM，位于 `assets/music/Themes/{ThemeName}/`
