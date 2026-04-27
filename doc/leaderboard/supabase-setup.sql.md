@@ -96,7 +96,33 @@ CREATE POLICY "Public read" ON level_records FOR SELECT USING (true);
 
 ---
 
-## 4. 配置前端
+## 4. 全球榜聚合 view
+
+**给已经按 1–3 步部署过的项目**：把这段补跑一次即可。
+
+```sql
+-- 全球榜（按玩家累计星数 / 步数）。
+-- 用 view 取代原来"客户端拉全表后聚合"的做法。
+CREATE OR REPLACE VIEW player_totals AS
+SELECT
+  p.id            AS player_id,
+  p.display_name  AS display_name,
+  COALESCE(SUM(lr.stars), 0)::INT  AS total_stars,
+  COALESCE(SUM(lr.steps), 0)::INT  AS total_steps,
+  COUNT(lr.id)::INT                AS levels_cleared
+FROM players p
+LEFT JOIN level_records lr ON lr.player_id = p.id
+GROUP BY p.id, p.display_name;
+
+-- view 的 RLS 是底表的并集；players + level_records 已开 Public read，
+-- view 自然可以匿名查询，不需要额外策略。
+```
+
+`leaderboard.js` 的 `getGlobalTop()` 现在只查这张 view + ORDER + LIMIT，不再下载全表。
+
+---
+
+## 5. 配置前端
 
 执行完 SQL 后，在 Supabase 的 **Settings → API** 页面获取：
 
