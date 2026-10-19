@@ -4,7 +4,7 @@
 
 ## 怎么玩
 
-在线入口：[Tile Explorer](https://youdrew.github.io/24h-AI-GameDevTest/)。GitHub Pages 会按账号的自定义域名设置跳转。
+在线入口：[Tile Explorer](https://tile-explorer.eugenepage.com/)。游戏由 GitHub Pages 托管，使用独立子域名。
 
 本地需要 Node.js 和 Python 3。ES Module 和 Service Worker 需要 HTTP，不能双击 `index.html`：
 
@@ -21,7 +21,9 @@ npm run preview
 
 `npm run build` 只复制游戏需要的 HTML、JS、CSS、媒体和清单；不发布开发工具、仓库设置和笔记。PixiJS 7.3.2 随站点一起发布，游戏启动不依赖第三方 CDN，也不需要 Vercel 或 Supabase。Supabase 仅用于可选的在线排行榜；服务不可用时显示提示，本地进度仍正常保存。
 
-如果账号主页配置了自定义域名，GitHub 会将项目 URL 跳转到同一域名下的 `/24h-AI-GameDevTest/`。域名前方的代理也需要能访问这个路径，否则 Pages 构建成功仍可能出现 404。参见 [GitHub 自定义域名说明](https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/about-custom-domains-and-github-pages#using-a-custom-domain-across-multiple-repositories)。
+本项目的 Pages 自定义域名为 `tile-explorer.eugenepage.com`，Cloudflare DNS 配置为 `CNAME tile-explorer → youdrew.github.io`，使用 **DNS only**。这样游戏直接访问 GitHub Pages，不会被博客的 Cloudflare Pages 或语言跳转规则接管。原 `youdrew.github.io/24h-AI-GameDevTest/` 链接会由 GitHub 重定向到游戏子域名。
+
+如果账号主页配置了自定义域名，未单独绑定域名的项目会继承它。本次独立域名配置避免继承博客域名后的 404。参见 [GitHub 自定义域名说明](https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/about-custom-domains-and-github-pages#using-a-custom-domain-across-multiple-repositories)。
 
 ## 文件总览
 

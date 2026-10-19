@@ -21,7 +21,7 @@
   "bugs": {
     "url": "https://github.com/youdrew/24h-AI-GameDevTest/issues"
   },
-  "homepage": "https://youdrew.github.io/24h-AI-GameDevTest/",
+  "homepage": "https://tile-explorer.eugenepage.com/",
   "devDependencies": {
     "puppeteer": "^24.42.0"
   }
