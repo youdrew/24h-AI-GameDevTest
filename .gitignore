@@ -6,3 +6,4 @@ dist/
 Thumbs.db
 *.log
 .omc/
+__pycache__/

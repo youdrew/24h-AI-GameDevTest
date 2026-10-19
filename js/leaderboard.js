@@ -6,6 +6,8 @@
 import { CONFIG } from './config.js';
 import { storage, isValidName } from './storage.js';
 
+const REQUEST_TIMEOUT_MS = 8000;
+
 function isConfigured() {
   return !!(CONFIG.SUPABASE_URL && CONFIG.SUPABASE_ANON_KEY);
 }
@@ -16,6 +18,25 @@ function headers() {
     'apikey': CONFIG.SUPABASE_ANON_KEY,
     'Authorization': `Bearer ${CONFIG.SUPABASE_ANON_KEY}`
   };
+}
+
+async function requestJson(url, options = {}) {
+  const controller = new AbortController();
+  // Keep the timeout active while reading the body as well as connecting.
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    const body = await res.text();
+    if (!res.ok) {
+      const err = new Error(`HTTP ${res.status}`);
+      err.status = res.status;
+      err.detail = body;
+      throw err;
+    }
+    return body ? JSON.parse(body) : null;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 // Strip any character the Supabase upsert_record regex rejects.
@@ -40,19 +61,10 @@ async function callRpc(record) {
     p_stars: record.stars,
     p_steps: record.steps
   };
-  const res = await fetch(url, { method: 'POST', headers: headers(), body: JSON.stringify(body) });
-  if (!res.ok) {
-    let detail = '';
-    try { detail = await res.text(); } catch {}
-    const err = new Error(`HTTP ${res.status} — ${detail || res.statusText}`);
-    err.status = res.status;
-    err.detail = detail;
-    err.body = body;
-    throw err;
-  }
+  const result = await requestJson(url, { method: 'POST', headers: headers(), body: JSON.stringify(body) });
   // upsert_record RETURNS VOID → empty body. Resolve to {} so the caller can
   // still treat the submission as successful.
-  return res.json().catch(() => ({}));
+  return result ?? {};
 }
 
 export const leaderboard = {
@@ -108,21 +120,14 @@ export const leaderboard = {
 
   async getLevelTop(level, limit = 20) {
     if (!isConfigured()) return [];
-    try {
-      const url = `${CONFIG.SUPABASE_URL}/rest/v1/level_records?level=eq.${level}&select=stars,steps,player:players(display_name,id)&order=stars.desc,steps.asc&limit=${limit}`;
-      const res = await fetch(url, { headers: headers() });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const rows = await res.json();
-      return rows.map((r) => ({
-        name: r.player?.display_name || '匿名',
-        stars: r.stars,
-        steps: r.steps,
-        playerId: r.player?.id
-      }));
-    } catch (err) {
-      console.warn('[leaderboard] getLevelTop failed', err);
-      return [];
-    }
+    const url = `${CONFIG.SUPABASE_URL}/rest/v1/level_records?level=eq.${level}&select=stars,steps,player:players(display_name,id)&order=stars.desc,steps.asc&limit=${limit}`;
+    const rows = await requestJson(url, { headers: headers() });
+    return rows.map((r) => ({
+      name: r.player?.display_name || '匿名',
+      stars: r.stars,
+      steps: r.steps,
+      playerId: r.player?.id
+    }));
   },
 
   async getGlobalTop(limit = 50) {
@@ -135,12 +140,7 @@ export const leaderboard = {
       const url = `${CONFIG.SUPABASE_URL}/rest/v1/player_totals` +
         `?select=player_id,display_name,total_stars,total_steps` +
         `&order=total_stars.desc,total_steps.asc&limit=${limit}`;
-      const res = await fetch(url, { headers: headers() });
-      if (res.status === 404 || res.status === 400) {
-        return await getGlobalTopLegacy(limit);
-      }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const rows = await res.json();
+      const rows = await requestJson(url, { headers: headers() });
       return rows.map((r) => ({
         name: r.display_name || '匿名',
         stars: r.total_stars,
@@ -148,8 +148,10 @@ export const leaderboard = {
         id: r.player_id
       }));
     } catch (err) {
-      console.warn('[leaderboard] getGlobalTop failed', err);
-      return [];
+      if (err.status === 404 || err.status === 400) {
+        return getGlobalTopLegacy(limit);
+      }
+      throw err;
     }
   },
 
@@ -161,9 +163,7 @@ export const leaderboard = {
 // see a leaderboard (just slower / capped at the first page Supabase returns).
 async function getGlobalTopLegacy(limit) {
   const url = `${CONFIG.SUPABASE_URL}/rest/v1/level_records?select=stars,steps,player:players(display_name,id)&limit=1000`;
-  const res = await fetch(url, { headers: headers() });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const rows = await res.json();
+  const rows = await requestJson(url, { headers: headers() });
   const byPlayer = new Map();
   for (const r of rows) {
     const id = r.player?.id;

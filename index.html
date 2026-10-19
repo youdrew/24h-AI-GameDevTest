@@ -14,13 +14,8 @@
   <link rel="stylesheet" href="css/ui.css" />
   <link rel="stylesheet" href="css/responsive.css" />
 
-  <!-- PixiJS v7.3.2 (locked) via CDN with cdnjs fallback -->
-  <script src="https://cdn.jsdelivr.net/npm/pixi.js@7.3.2/dist/pixi.min.js" crossorigin="anonymous"></script>
-  <script>
-    if (typeof PIXI === 'undefined') {
-      document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"><\/script>');
-    }
-  </script>
+  <!-- Pinned PixiJS ships with the game, including for offline play. -->
+  <script src="assets/vendor/pixi-7.3.2.min.js"></script>
 </head>
 <body>
   <div id="app">

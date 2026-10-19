@@ -24,6 +24,7 @@ class UI {
     this.completeData = null;
     this.selectedReward = null;
     this.activeLeaderboardTab = 'global';
+    this._leaderboardRequestId = 0;
     this.devMode = false;
     this._devTapTimes = [];
   }
@@ -122,8 +123,9 @@ class UI {
 
   async _renderLeaderboard() {
     const list = this._$('leaderboard-list');
+    const requestId = ++this._leaderboardRequestId;
     if (!leaderboard.isConfigured()) {
-      list.innerHTML = '<p class="hint">排行榜未配置 (Supabase URL/Key 留空)。<br/>本地最佳进度仍会保存。</p>';
+      list.innerHTML = '<p class="hint">在线排行榜暂时不可用，本地进度不受影响。</p>';
       return;
     }
     list.innerHTML = '<p class="hint">载入中…</p>';
@@ -135,9 +137,11 @@ class UI {
         rows = await leaderboard.getLevelTop(this.game.level || storage.state.currentLevel, 20);
       }
     } catch (err) {
-      list.innerHTML = '<p class="hint">载入失败，请稍后重试。</p>';
+      if (requestId !== this._leaderboardRequestId) return;
+      list.innerHTML = '<p class="hint">在线排行榜暂时不可用，本地进度不受影响。<br/>请稍后重试。</p>';
       return;
     }
+    if (requestId !== this._leaderboardRequestId) return;
     if (rows.length === 0) {
       list.innerHTML = '<p class="hint">暂无数据。</p>';
       return;
@@ -260,7 +264,7 @@ class UI {
   async _handleRecordRank() {
     const level = this.game.level || storage.state.currentLevel;
     if (!leaderboard.isConfigured()) {
-      this.toast('排行榜未配置（Supabase URL/Key 留空）');
+      this.toast('在线排行榜暂时不可用，本地进度不受影响');
       return;
     }
     const stars = storage.getStars(level);
@@ -283,11 +287,11 @@ class UI {
       } else {
         // submit() returned null — the offline-queue branch fired or the name
         // failed validation. Surface it; the queue will retry on reconnect.
-        this.toast('上传未成功，已加入离线队列');
+        this.toast('在线排行榜暂时不可用，本地进度不受影响');
         console.warn('[record-rank] submit returned null', { level, record });
       }
     } catch (err) {
-      this.toast('上传失败：' + (err?.message || err));
+      this.toast('在线排行榜暂时不可用，本地进度不受影响');
       console.error('[record-rank] submit threw', err);
     }
   }
@@ -332,10 +336,10 @@ class UI {
     if (leaderboard.isConfigured()) {
       leaderboard.submit({ level: data.level, stars: data.stars, steps: data.steps })
         .then((res) => {
-          this._$('complete-rank').textContent = res ? '已上传！' : '已加入离线队列';
+          this._$('complete-rank').textContent = res ? '已上传！' : '在线排行榜暂时不可用，本地进度不受影响';
         })
         .catch(() => {
-          this._$('complete-rank').textContent = '已加入离线队列';
+          this._$('complete-rank').textContent = '在线排行榜暂时不可用，本地进度不受影响';
         });
     }
 

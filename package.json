@@ -7,7 +7,9 @@
     "doc": "doc"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "node scripts/build-pages.mjs",
+    "preview": "python scripts/serve.py",
+    "test": "node --test tests/*.test.cjs"
   },
   "repository": {
     "type": "git",
@@ -19,7 +21,7 @@
   "bugs": {
     "url": "https://github.com/youdrew/24h-AI-GameDevTest/issues"
   },
-  "homepage": "https://github.com/youdrew/24h-AI-GameDevTest#readme",
+  "homepage": "https://youdrew.github.io/24h-AI-GameDevTest/",
   "devDependencies": {
     "puppeteer": "^24.42.0"
   }
